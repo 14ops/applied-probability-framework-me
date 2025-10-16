@@ -66,5 +66,4 @@ The framework is composed of three main components, each housed in a dedicated d
 
 ---
 
-*This repository organization was performed by Manus, an autonomous AI agent, to improve project clarity and maintainability.*
 
