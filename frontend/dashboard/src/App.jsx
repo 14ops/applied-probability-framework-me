@@ -7,7 +7,7 @@ import StrategyInfo from './components/StrategyInfo';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
 function App() {
@@ -81,16 +81,34 @@ function App() {
   };
 
   const stopSimulation = () => {
-    setGameState(prev => ({ ...prev, isRunning: false }));
+    setGameState(prev => {
+      if (prev.stopSimulation) {
+        prev.stopSimulation();
+      }
+      return { ...prev, isRunning: false };
+    });
   };
 
   const runSimulationLoop = async (simulationId) => {
     let currentBankroll = gameState.bankroll;
     let rounds = 0;
     let wins = 0;
+    let isRunning = true;
 
-    while (gameState.isRunning && rounds < 100) {
+    const checkRunning = () => {
+      return isRunning;
+    };
+
+    const stopLoop = () => {
+      isRunning = false;
+    };
+
+    setGameState(prev => ({ ...prev, stopSimulation: stopLoop }));
+
+    while (checkRunning() && rounds < 100) {
       await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (!checkRunning()) break;
 
       const won = Math.random() > 0.5;
       const profit = won ? gameState.betAmount * 1.5 : -gameState.betAmount;
@@ -105,6 +123,7 @@ function App() {
         bankroll: currentBankroll,
         wins: won ? prev.wins + 1 : prev.wins,
         losses: !won ? prev.losses + 1 : prev.losses,
+        stopSimulation: stopLoop,
       }));
 
       setStats({
@@ -128,7 +147,7 @@ function App() {
         .eq('id', simulationId);
     }
 
-    setGameState(prev => ({ ...prev, isRunning: false }));
+    setGameState(prev => ({ ...prev, isRunning: false, stopSimulation: null }));
   };
 
   const simulateBoard = (won) => {
