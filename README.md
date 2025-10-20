@@ -48,8 +48,10 @@ The framework is composed of three main components, each housed in a dedicated d
 2.  **Set up the Python Backend:**
     ```bash
     cd backend/python
+    python3 -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
-    # See implementation_guide.md for usage
+    # Quick smoke test (optional deps are handled gracefully)
+    python -c "import sys; sys.path.insert(0, '$(pwd)'); from src.main import main; main()"
     ```
 3.  **Set up the Interactive Dashboard:**
     ```bash
@@ -61,7 +63,7 @@ The framework is composed of three main components, each housed in a dedicated d
 4.  **Set up the Java GUI:**
     ```bash
     cd gui/java
-    # Follow instructions in the compile_and_run.sh script
+    ./compile_and_run.sh
     ```
 
 ---
