@@ -4,6 +4,7 @@ import ControlPanel from './components/ControlPanel';
 import GameBoard from './components/GameBoard';
 import Statistics from './components/Statistics';
 import StrategyInfo from './components/StrategyInfo';
+import AIVisualization from './components/AIVisualization';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -11,6 +12,7 @@ const supabase = createClient(
 );
 
 function App() {
+  const [currentView, setCurrentView] = useState('game'); // 'game' or 'ai-viz'
   const [gameState, setGameState] = useState({
     boardSize: 5,
     mineCount: 3,
@@ -185,37 +187,87 @@ function App() {
           <p style={{
             color: '#94a3b8',
             fontSize: '1.1rem',
+            marginBottom: '1rem',
           }}>
             Advanced Probability and Automation System
           </p>
+          
+          {/* Navigation */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            justifyContent: 'center',
+            marginBottom: '1rem'
+          }}>
+            <button
+              onClick={() => setCurrentView('game')}
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                border: 'none',
+                background: currentView === 'game' 
+                  ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' 
+                  : 'rgba(55, 65, 81, 0.8)',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                fontWeight: '600',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              Game Dashboard
+            </button>
+            <button
+              onClick={() => setCurrentView('ai-viz')}
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                border: 'none',
+                background: currentView === 'ai-viz' 
+                  ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' 
+                  : 'rgba(55, 65, 81, 0.8)',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                fontWeight: '600',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              AI Visualization
+            </button>
+          </div>
         </header>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '1.5rem',
-          marginBottom: '1.5rem',
-        }}>
-          <ControlPanel
-            gameState={gameState}
-            setGameState={setGameState}
-            strategies={strategies}
-            onStart={startSimulation}
-            onStop={stopSimulation}
-          />
-          <Statistics stats={stats} gameState={gameState} />
-        </div>
+        {currentView === 'game' ? (
+          <>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '1.5rem',
+              marginBottom: '1.5rem',
+            }}>
+              <ControlPanel
+                gameState={gameState}
+                setGameState={setGameState}
+                strategies={strategies}
+                onStart={startSimulation}
+                onStop={stopSimulation}
+              />
+              <Statistics stats={stats} gameState={gameState} />
+            </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-          gap: '1.5rem',
-        }}>
-          <GameBoard board={gameState.board} />
-          <StrategyInfo
-            strategy={strategies.find(s => s.id === gameState.strategy)}
-          />
-        </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+              gap: '1.5rem',
+            }}>
+              <GameBoard board={gameState.board} />
+              <StrategyInfo
+                strategy={strategies.find(s => s.id === gameState.strategy)}
+              />
+            </div>
+          </>
+        ) : (
+          <AIVisualization />
+        )}
       </div>
     </div>
   );
