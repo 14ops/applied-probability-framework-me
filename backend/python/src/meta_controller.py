@@ -2,6 +2,8 @@
 import random
 import numpy as np
 from collections import deque
+from datetime import datetime
+import os
 
 # Placeholder for individual strategy classes (e.g., BasicStrategy, TakeshiStrategy, etc.)
 # In a real scenario, these would be imported from src/strategies.py, src/advanced_strategies.py, etc.
@@ -40,6 +42,9 @@ class StrategyManager:
         self.performance_history = {name: deque(maxlen=window_size) for name in self.strategies.keys()}
         self.thompson_params = {name: {'alpha': 1, 'beta': 1} for name in self.strategies.keys()} # Alpha for wins, Beta for losses
         self.window_size = window_size
+        # Lazy logger import to avoid circulars
+        self._logger = None
+        self._log_dir = os.path.join(os.path.dirname(__file__), 'logs')
 
     def update_performance(self, strategy_name, win, payout):
         # Update rolling performance metrics
@@ -50,6 +55,26 @@ class StrategyManager:
             self.thompson_params[strategy_name]['alpha'] += 1
         else:
             self.thompson_params[strategy_name]['beta'] += 1
+
+        # Persist improvement snapshot
+        try:
+            if self._logger is None:
+                from .data_logger_and_comparator import DataLogger  # local import
+                self._logger = DataLogger(self._log_dir)
+            metrics = self.get_rolling_metrics(strategy_name)
+            record = {
+                'strategy': strategy_name,
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'win': bool(win),
+                'payout': float(payout) if payout is not None else 0.0,
+                'win_rate': float(metrics.get('win_rate', 0)),
+                'avg_payout': float(metrics.get('avg_payout', 0)),
+                'ev': float(metrics.get('ev', 0)),
+            }
+            self._logger.append_ai_improvement(record)
+        except Exception:
+            # best-effort logging; ignore failures
+            pass
 
     def select_strategy_thompson_sampling(self):
         best_strategy = None

@@ -6,4 +6,6 @@ matplotlib
 tensorflow
 pgmpy
 plotly
+fastapi
+uvicorn
 

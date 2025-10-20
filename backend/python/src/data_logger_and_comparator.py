@@ -98,6 +98,25 @@ class DataLogger:
         print(f"Session logged to {log_file}")
         return log_file
 
+    def append_ai_improvement(self, record: dict):
+        """
+        Append a single AI improvement record to a JSON list file.
+        Expected keys: strategy, timestamp, win, payout, win_rate, avg_payout, ev
+        """
+        path = os.path.join(self.log_dir, "ai_improvements.json")
+        data = []
+        if os.path.isfile(path):
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+                    if not isinstance(data, list):
+                        data = []
+            except Exception:
+                data = []
+        data.append(record)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
 class DataComparator:
     def __init__(self):
         pass
