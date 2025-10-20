@@ -8,23 +8,27 @@ The project is organized into the following directory structure:
 
 ```
 applied-probability-framework/
-├── python-backend/
-│   ├── src/
-│   ├── visualizations/
-│   └── requirements.txt
-├── java-gui/
-├── interactive-dashboard/
-├── README.md
-└── ... (other files)
+├── backend/
+│   └── python/
+│       ├── src/
+│       ├── visualizations/
+│       └── requirements.txt
+├── gui/
+│   └── java/
+├── frontend/
+│   └── dashboard/
+├── docs/
+└── README.md
 ```
 
 This structure separates the Python backend, Java GUI, and interactive dashboard for clarity and maintainability.
 
 ## 2. Python Backend Dependencies
 
-To install the required Python packages, navigate to the `python-backend` directory and run the following command:
+To install the required Python packages, navigate to the backend directory and run the following command:
 
 ```bash
+cd backend/python
 pip install -r requirements.txt
 ```
 
@@ -98,17 +102,17 @@ cd java-gui
 
 ## 10. Interactive Dashboard Setup
 
-The interactive dashboard files are in the `interactive-dashboard` directory. To set it up, navigate to the directory and install the Node.js dependencies:
+The interactive dashboard files are in the `frontend/dashboard` directory. To set it up, navigate to the directory and install the Node.js dependencies:
 
 ```bash
-cd interactive-dashboard
+cd frontend/dashboard
 npm install
 ```
 
 Then, you can start the development server:
 
 ```bash
-npm start
+npm run dev
 ```
 
 ## 11. Configuration and Testing
@@ -121,21 +125,20 @@ Configuration and testing files are located in the `python-backend` directory:
 
 ## 12. Documentation and Reports
 
-Project documentation and reports are in the root directory:
+Project documentation and reports are in the `docs` directory:
 
-- `README.md`
-- `README_ENHANCED.md`
-- `README_FINAL.md`
-- `character_strategies_explained.md`
-- `strategy_formulas.md`
+- `docs/ARCHIVE/README_ENHANCED.md`
+- `docs/ARCHIVE/README_FINAL.md`
+- `docs/strategies/character_strategies_explained.md`
+- `docs/strategies/strategy_formulas.md`
 
 ## 13. Integration Testing
 
-To verify that all components are correctly imported and integrated, run the `main.py` file from the `python-backend` directory:
+To verify that all components are correctly imported and integrated, run the `main` entrypoint from the backend directory:
 
 ```bash
-cd python-backend
-python src/main.py
+cd backend/python
+python -m src.main
 ```
 
 Check for any import errors or missing dependencies in the console output.

@@ -6,23 +6,25 @@ This document provides detailed procedures for testing and validating the Applie
 
 To verify that all Python modules are correctly imported and integrated, follow these steps:
 
-1.  Navigate to the `python-backend` directory:
+1.  Navigate to the backend directory:
 
     ```bash
-    cd applied-probability-framework/python-backend
+    cd backend/python
     ```
 
-2.  Run the `main.py` script:
+2.  Run the `main` entrypoint:
 
     ```bash
-    python3.11 -m src.main
+    python3 -m src.main
     ```
 
 3.  **Expected Output:** You should see the following message in your console, indicating that all modules were imported without any errors:
 
     ```
     Applied Probability and Automation Framework
-    All modules imported successfully.
+    Core modules loaded.
+    [warn] Optional ML components not available (install requirements).
+    [warn] Visualization modules not available (install plotting libs).
     ```
 
 If you encounter any `ModuleNotFoundError` or other import-related errors, double-check the file paths and ensure that all dependencies from `requirements.txt` are installed in your Python environment.
@@ -41,10 +43,10 @@ To test the connection between the Java GUI and the Python backend, you will nee
 
 To test the interactive dashboard, follow these steps:
 
-1.  Navigate to the `interactive-dashboard` directory:
+1.  Navigate to the `frontend/dashboard` directory:
 
     ```bash
-    cd applied-probability-framework/interactive-dashboard
+    cd frontend/dashboard
     ```
 
 2.  Install the Node.js dependencies:
@@ -56,10 +58,10 @@ To test the interactive dashboard, follow these steps:
 3.  Start the development server:
 
     ```bash
-    npm start
+    npm run dev
     ```
 
-4.  Open your web browser and go to `http://localhost:3000` (or the address provided by the development server).
+4.  Open your web browser and go to `http://localhost:5173`.
 
 **Expected Outcome:** The React dashboard should render in your browser. To fully test the dashboard, you will need to connect it to a data source, which would typically be the Python backend. This will involve fetching data from the backend's API and displaying it in the dashboard's components.
 
@@ -67,10 +69,10 @@ To test the interactive dashboard, follow these steps:
 
 Before running the full application, it is crucial to verify that all configuration files have been updated with the correct file paths for your local environment. Use the following checklist to ensure everything is set up correctly:
 
--   [ ] `python-backend/src/drl_config.json`: Verify any file paths if they are added in the future.
--   [ ] `python-backend/src/multi_agent_config.json`: Verify any file paths if they are added in the future.
--   [ ] `python-backend/src/behavioral_config.json`: Verify any file paths if they are added in the future.
--   [ ] `python-backend/test_config.json`: Verify any file paths if they are added in the future.
+-   [ ] `backend/python/src/drl_config.json`: Verify any file paths if they are added in the future.
+-   [ ] `backend/python/src/multi_agent_config.json`: Verify any file paths if they are added in the future.
+-   [ ] `backend/python/src/behavioral_config.json`: Verify any file paths if they are added in the future.
+-   [ ] `backend/python/test_config.json`: Verify any file paths if they are added in the future.
 
 By following these testing and validation procedures, you can ensure that the Applied Probability and Automation Framework is correctly set up and ready for use.
 

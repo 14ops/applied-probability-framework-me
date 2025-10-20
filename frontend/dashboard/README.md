@@ -96,10 +96,12 @@ Each strategy has unique characteristics optimized for different scenarios:
     GameBoard.jsx       # Visual board representation
     Statistics.jsx      # Performance metrics display
     StrategyInfo.jsx    # Strategy details panel
-  App.jsx              # Main application component
-  main.jsx            # Application entry point
-  index.css           # Global styles
+  App.jsx               # Main application component
+  main.jsx              # Application entry point
+  index.css             # Global styles
 ```
+
+Note: The legacy `interactive-dashboard/` subfolder is deprecated and kept only for reference. The active app lives under `src/` with Vite.
 
 ## Notes
 

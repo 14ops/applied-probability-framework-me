@@ -31,22 +31,16 @@ The project has three main components: a Python backend, a Java GUI, and a web-b
 | **Web Root Files** | `/index.html`, `/src`, `/package.json`, etc. | `/frontend/dashboard` | Consolidate all web-related files into the dashboard directory. |
 | **Supabase** | `/supabase` | `/infrastructure/supabase` | Group infrastructure-related files. |
 
-## 3. Implementation Steps
+## 3. Status of Implementation
 
-1.  **Create new directories:** `backend`, `frontend`, `gui`, `infrastructure`, `docs/ARCHIVE`, `docs/guides`, `docs/strategies`, `docs/papers`.
-2.  **Move and Rename Components:**
-    *   Move `/python-backend` to `/backend/python`.
-    *   Move `/java-gui` to `/gui/java`.
-    *   Move `/interactive-dashboard` to `/frontend/dashboard`.
-    *   Move `/supabase` to `/infrastructure/supabase`.
-3.  **Consolidate Web Files:** Move root-level web files (`index.html`, `src`, `package.json`, `package-lock.json`, `vite.config.js`) into `/frontend/dashboard`.
-4.  **Consolidate Documentation:**
-    *   Move `README_FINAL.md` and `README_ENHANCED.md` to `/docs/ARCHIVE`.
-    *   Move `APP_README.md` to `/frontend/dashboard/README.md`.
-    *   Move `character_strategies_explained.md` and `strategy_formulas.md` to `/docs/strategies`.
-    *   Move `implementation_guide.md`, `testing_and_validation.md`, and `playbook.md` to `/docs/guides`.
-    *   Move all files from `/docs` to `/docs/papers`.
-5.  **Update Main README:** Write a new, concise `README.md` that serves as a project overview and table of contents, linking to the new documentation structure.
-6.  **Cleanup:** Remove all original files from the root directory.
-7.  **Final Review and Commit.**
+Completed actions:
+- Created standardized directories: `backend`, `frontend`, `gui`, `infrastructure`, and docs subfolders.
+- Moved Python backend to `backend/python` and flattened nested `python-backend`.
+- Flattened GUI under `gui/java` (removed `java-gui` nesting).
+- Consolidated dashboard under `frontend/dashboard` and removed deprecated `interactive-dashboard/` subapp.
+- Flattened `infrastructure/supabase` (moved nested `supabase/` up one level).
+
+Remaining considerations:
+- Verify end-to-end integration (optional ML/visualization libs require `pip install -r backend/python/requirements.txt`).
+- Ensure Supabase env vars are set for the dashboard (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 
