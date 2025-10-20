@@ -1,0 +1,90 @@
+{
+  "updatedAt": "2025-10-20T00:00:00Z",
+  "agents": [
+    {
+      "id": "drl_agent",
+      "name": "DRL Agent",
+      "type": "Q-Learning (Tabular)",
+      "color": "#f59e0b",
+      "metrics": { "winRate": 0.52, "avgPayout": 1.32, "ev": 0.12 },
+      "history": [
+        { "at": "2025-10-01T10:00:00Z", "label": "Initialize ε=1.0", "ev": -0.05, "winRate": 0.40 },
+        { "at": "2025-10-05T14:30:00Z", "label": "Decreased ε to 0.7", "ev": 0.02, "winRate": 0.46 },
+        { "at": "2025-10-09T09:45:00Z", "label": "Learning rate tuned to 0.1", "ev": 0.08, "winRate": 0.49 },
+        { "at": "2025-10-14T18:20:00Z", "label": "Improved reward shaping", "ev": 0.12, "winRate": 0.52 }
+      ]
+    },
+    {
+      "id": "adversarial_agent",
+      "name": "Adversarial Agent",
+      "type": "Adversarial Training",
+      "color": "#ef4444",
+      "metrics": { "winRate": 0.48, "avgPayout": 1.20, "ev": 0.04 },
+      "history": [
+        { "at": "2025-10-02T12:10:00Z", "label": "Added detector feedback loop", "ev": 0.01, "winRate": 0.45 },
+        { "at": "2025-10-11T16:00:00Z", "label": "Robustness regularization", "ev": 0.03, "winRate": 0.47 },
+        { "at": "2025-10-17T08:00:00Z", "label": "Hard-negative mining", "ev": 0.04, "winRate": 0.48 }
+      ]
+    },
+    {
+      "id": "strategy_takeshi",
+      "name": "Takeshi",
+      "type": "Aggressive Strategy",
+      "color": "#ef4444",
+      "metrics": { "winRate": 0.42, "avgPayout": 1.65, "ev": 0.06 },
+      "history": [
+        { "at": "2025-10-03T09:00:00Z", "label": "Higher risk window (40-60%)", "ev": 0.02, "winRate": 0.40 },
+        { "at": "2025-10-12T11:30:00Z", "label": "Aggressive Kelly scaling", "ev": 0.05, "winRate": 0.41 },
+        { "at": "2025-10-18T20:15:00Z", "label": "Promo-aware sizing", "ev": 0.06, "winRate": 0.42 }
+      ]
+    },
+    {
+      "id": "strategy_lelouch",
+      "name": "Lelouch",
+      "type": "Calculated Mastermind",
+      "color": "#8b5cf6",
+      "metrics": { "winRate": 0.55, "avgPayout": 1.40, "ev": 0.18 },
+      "history": [
+        { "at": "2025-10-04T13:20:00Z", "label": "Center-out reveal heuristic", "ev": 0.10, "winRate": 0.52 },
+        { "at": "2025-10-10T07:10:00Z", "label": "Adaptive probability thresholds", "ev": 0.15, "winRate": 0.54 },
+        { "at": "2025-10-16T22:05:00Z", "label": "Modified Kelly sizing", "ev": 0.18, "winRate": 0.55 }
+      ]
+    },
+    {
+      "id": "strategy_kazuya",
+      "name": "Kazuya",
+      "type": "Conservative Survivor",
+      "color": "#10b981",
+      "metrics": { "winRate": 0.68, "avgPayout": 1.10, "ev": 0.12 },
+      "history": [
+        { "at": "2025-10-03T17:00:00Z", "label": "85%+ thresholding", "ev": 0.08, "winRate": 0.66 },
+        { "at": "2025-10-08T10:40:00Z", "label": "1-2% position sizing", "ev": 0.11, "winRate": 0.67 },
+        { "at": "2025-10-15T19:30:00Z", "label": "Drawdown protection rules", "ev": 0.12, "winRate": 0.68 }
+      ]
+    },
+    {
+      "id": "strategy_senku",
+      "name": "Senku",
+      "type": "Data-Driven Scientist",
+      "color": "#3b82f6",
+      "metrics": { "winRate": 0.51, "avgPayout": 1.45, "ev": 0.15 },
+      "history": [
+        { "at": "2025-10-06T21:00:00Z", "label": "Historical curve fit", "ev": 0.12, "winRate": 0.49 },
+        { "at": "2025-10-13T12:25:00Z", "label": "Multi-objective tuning", "ev": 0.14, "winRate": 0.50 },
+        { "at": "2025-10-19T15:45:00Z", "label": "Continuous learning loop", "ev": 0.15, "winRate": 0.51 }
+      ]
+    },
+    {
+      "id": "ensemble_multi_agent",
+      "name": "Ensemble Controller",
+      "type": "Thompson-Sampling Meta-Controller",
+      "color": "#eab308",
+      "metrics": { "winRate": 0.57, "avgPayout": 1.38, "ev": 0.20 },
+      "history": [
+        { "at": "2025-10-05T08:00:00Z", "label": "Rolling window=100", "ev": 0.14, "winRate": 0.53 },
+        { "at": "2025-10-09T18:00:00Z", "label": "Beta priors refined", "ev": 0.18, "winRate": 0.55 },
+        { "at": "2025-10-18T09:20:00Z", "label": "Value-aware sampling", "ev": 0.20, "winRate": 0.57 }
+      ]
+    }
+  ]
+}
