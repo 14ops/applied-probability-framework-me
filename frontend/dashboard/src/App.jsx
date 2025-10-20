@@ -4,6 +4,7 @@ import ControlPanel from './components/ControlPanel';
 import GameBoard from './components/GameBoard';
 import Statistics from './components/Statistics';
 import StrategyInfo from './components/StrategyInfo';
+import AgentsProgress from './components/AgentsProgress';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -215,6 +216,7 @@ function App() {
           <StrategyInfo
             strategy={strategies.find(s => s.id === gameState.strategy)}
           />
+          <AgentsProgress />
         </div>
       </div>
     </div>

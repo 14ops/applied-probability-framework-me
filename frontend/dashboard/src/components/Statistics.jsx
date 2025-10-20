@@ -1,4 +1,21 @@
+import { useEffect, useState } from 'react';
+
 function Statistics({ stats, gameState }) {
+  const [progress, setProgress] = useState({ summary: {}, sessions: [] });
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchProgress = async () => {
+      try {
+        const res = await fetch('/api/progress');
+        const json = await res.json();
+        if (mounted) setProgress(json);
+      } catch (_) {}
+    };
+    fetchProgress();
+    const id = setInterval(fetchProgress, 5000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
   const StatCard = ({ label, value, color }) => (
     <div style={{
       background: 'rgba(15, 23, 42, 0.6)',
@@ -70,6 +87,16 @@ function Statistics({ stats, gameState }) {
           label="Losses"
           value={gameState.losses}
           color="#f87171"
+        />
+        <StatCard
+          label="Sessions Logged"
+          value={`${progress?.summary?.total_sessions || 0}`}
+          color="#38bdf8"
+        />
+        <StatCard
+          label="Log Win Rate"
+          value={`${progress?.summary?.win_rate ? (progress.summary.win_rate * 100).toFixed(1) : '0.0'}%`}
+          color="#f59e0b"
         />
       </div>
     </div>
