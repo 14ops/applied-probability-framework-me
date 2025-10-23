@@ -144,9 +144,9 @@ sessions.jsonl
 src/python/logs/*.json
 src/python/logs/*.jsonl
 
-# Build artifacts
-dist/
-build/
+# Build artifacts (only root level)
+/dist/
+/build/
 *.exe
 
 # Temporary documentation (don't commit these)
