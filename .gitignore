@@ -28,8 +28,11 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
+# Keep .spec files for reproducible builds
+# *.spec
 
 # Installer logs
 pip-log.txt
@@ -128,54 +131,20 @@ dmypy.json
 *.swp
 *.swo
 *~
-*.sublime-project
-*.sublime-workspace
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Framework specific
-results/
-experiments/
+# Project specific
+*.zip
 logs/
-*.jsonl
-checkpoint_*.json
-checkpoint_*.pkl
+*.log
+sessions.jsonl
+src/python/logs/*.json
+src/python/logs/*.jsonl
 
-# Temporary files
-*.tmp
-*.temp
-temp/
-tmp/
-
-# PyCharm
-.idea/
-
-# VS Code
-.vscode/
-*.code-workspace
-
-# Large data files (optional - uncomment if needed)
-# *.csv
-# *.h5
-# *.hdf5
-# *.pkl
-# *.pickle
-
-# Model files (optional - uncomment if needed)
-# *.pth
-# *.pt
-# *.ckpt
-# *.pb
-# saved_model/
-
-# Misc
-.~lock.*
-desktop.ini
-
+# Build artifacts
+dist/
+build/
+*.exe

@@ -38,3 +38,4 @@ services:
       - PYTHONUNBUFFERED=1
     command: pytest src/python/tests/ -v --cov=core
 
+
