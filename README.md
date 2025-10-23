@@ -1,9 +1,9 @@
 # Applied Probability Framework
 
-[![CI Status](https://github.com/yourusername/applied-probability-framework/workflows/Continuous%20Integration/badge.svg)](https://github.com/yourusername/applied-probability-framework/actions)
-[![codecov](https://codecov.io/gh/yourusername/applied-probability-framework/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/applied-probability-framework)
+[![CI Status](https://github.com/14ops/applied-probability-framework-me/workflows/Continuous%20Integration/badge.svg)](https://github.com/14ops/applied-probability-framework-me/actions)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 A **professional-grade Monte Carlo simulation framework** for probability analysis, decision-making under uncertainty, and stochastic optimization. Designed following industry best practices with comprehensive testing, documentation, and extensibility.
 
@@ -39,8 +39,8 @@ A **professional-grade Monte Carlo simulation framework** for probability analys
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/applied-probability-framework.git
-cd applied-probability-framework
+git clone https://github.com/14ops/applied-probability-framework-me.git
+cd applied-probability-framework-me
 
 # Install dependencies
 cd src/python
