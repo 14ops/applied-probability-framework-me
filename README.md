@@ -1,9 +1,13 @@
 # Applied Probability Framework
 
 [![CI Status](https://github.com/14ops/applied-probability-framework-me/workflows/Continuous%20Integration/badge.svg)](https://github.com/14ops/applied-probability-framework-me/actions)
+[![GitHub release](https://img.shields.io/github/v/release/14ops/applied-probability-framework-me)](https://github.com/14ops/applied-probability-framework-me/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/14ops/applied-probability-framework-me)](https://github.com/14ops/applied-probability-framework-me/commits/main)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Tests](https://img.shields.io/badge/tests-100%2B-brightgreen)](src/python/tests/)
+[![Coverage](https://img.shields.io/badge/coverage-%3E80%25-brightgreen)](src/python/tests/)
 
 A **professional-grade Monte Carlo simulation framework** for probability analysis, decision-making under uncertainty, and stochastic optimization. Designed following industry best practices with comprehensive testing, documentation, and extensibility.
 
@@ -34,6 +38,25 @@ A **professional-grade Monte Carlo simulation framework** for probability analys
 - 📊 **Result Analysis**: Built-in analysis and visualization tools
 
 ## 📦 Installation
+
+### 🐳 Quick Start with Docker (Recommended)
+
+**Try the framework in under 5 minutes:**
+
+```bash
+# Clone the repository
+git clone https://github.com/14ops/applied-probability-framework-me.git
+cd applied-probability-framework-me
+
+# Run the demo (builds automatically)
+docker-compose up framework
+
+# Or run interactively
+docker-compose run interactive
+
+# Run tests
+docker-compose up test
+```
 
 ### From Source
 

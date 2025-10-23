@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  framework:
+    build: .
+    image: applied-probability-framework:latest
+    container_name: apf-demo
+    volumes:
+      - ./examples:/app/examples
+      - ./results:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python examples/quick_demo.py
+  
+  # Interactive mode for development
+  interactive:
+    build: .
+    image: applied-probability-framework:latest
+    container_name: apf-interactive
+    volumes:
+      - ./src:/app/src
+      - ./examples:/app/examples
+      - ./results:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+  
+  # Run tests
+  test:
+    build: .
+    image: applied-probability-framework:latest
+    container_name: apf-test
+    volumes:
+      - ./src:/app/src
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: pytest src/python/tests/ -v --cov=core
+
