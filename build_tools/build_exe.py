@@ -24,7 +24,8 @@ def main():
         print("[OK] PyInstaller installed")
     
     # Paths
-    project_root = Path(__file__).parent
+    build_tools_dir = Path(__file__).parent
+    project_root = build_tools_dir.parent
     src_python = project_root / "src" / "python"
     dist_dir = project_root / "dist"
     build_dir = project_root / "build"

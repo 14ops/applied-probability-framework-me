@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 # Paths
-project_root = Path.cwd()
+spec_dir = Path(__file__).parent
+project_root = spec_dir.parent
 src_python = project_root / 'src' / 'python'
 
 # Add source directory to path

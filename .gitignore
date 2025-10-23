@@ -148,3 +148,12 @@ src/python/logs/*.jsonl
 dist/
 build/
 *.exe
+
+# Temporary documentation (don't commit these)
+*_TEMP.md
+*_TODO.md
+CLEANUP_*.md
+
+# Output files
+pylint_output.txt
+*_output.txt
