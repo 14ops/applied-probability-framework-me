@@ -1,0 +1,68 @@
+{
+  "lelouch": {
+    "wins": 3,
+    "losses": 29,
+    "total_profit": -265.4,
+    "games_played": 32,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": -1.1500000000000004
+    }
+  },
+  "takeshi": {
+    "wins": 37,
+    "losses": 61,
+    "total_profit": 89.7,
+    "games_played": 98,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": 0.05
+    }
+  },
+  "okabe": {
+    "wins": 12,
+    "losses": 14,
+    "total_profit": 34.32999999999999,
+    "games_played": 26,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": 0.0
+    }
+  },
+  "senku": {
+    "wins": 16,
+    "losses": 37,
+    "total_profit": 891.5907999999998,
+    "games_played": 53,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": -2.000000000000001
+    }
+  },
+  "hybrid": {
+    "wins": 9,
+    "losses": 17,
+    "total_profit": -19.099999999999998,
+    "games_played": 26,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": 0.0
+    }
+  },
+  "kazuya": {
+    "wins": 7,
+    "losses": 18,
+    "total_profit": -73.4,
+    "games_played": 25,
+    "learning_data": {
+      "successful_moves": [],
+      "failed_moves": [],
+      "risk_adjustments": -0.35
+    }
+  }
+}

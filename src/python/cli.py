@@ -19,6 +19,9 @@ from core.config import (
 from core.plugin_system import get_registry
 from core.parallel_engine import ParallelSimulationEngine
 
+# Import to register all built-in plugins
+import register_plugins
+
 
 def setup_logging(log_level: str) -> None:
     """

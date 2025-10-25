@@ -1,0 +1,127 @@
+{
+  "config": {
+    "simulation": {
+      "num_simulations": 5,
+      "num_episodes_per_sim": 1,
+      "seed": 42,
+      "parallel": false,
+      "n_jobs": -1,
+      "convergence_check": true,
+      "convergence_window": 100,
+      "convergence_tolerance": 0.001,
+      "save_results": true,
+      "output_dir": "results",
+      "log_level": "INFO"
+    },
+    "game": {
+      "game_type": "mines",
+      "board_size": 5,
+      "mine_count": 3,
+      "initial_bankroll": 1000.0,
+      "initial_bet_size": 10.0,
+      "params": {}
+    },
+    "strategies": [
+      {
+        "strategy_type": "kelly",
+        "risk_tolerance": 0.3,
+        "kelly_fraction": 0.1,
+        "min_confidence_threshold": 0.1,
+        "estimator_config": {
+          "estimator_type": "beta",
+          "alpha": 1.0,
+          "beta": 1.0,
+          "confidence_level": 0.95,
+          "name": "default_estimator"
+        },
+        "name": "conservative",
+        "params": {}
+      },
+      {
+        "strategy_type": "kelly",
+        "risk_tolerance": 0.5,
+        "kelly_fraction": 0.25,
+        "min_confidence_threshold": 0.1,
+        "estimator_config": {
+          "estimator_type": "beta",
+          "alpha": 1.0,
+          "beta": 1.0,
+          "confidence_level": 0.95,
+          "name": "default_estimator"
+        },
+        "name": "balanced",
+        "params": {}
+      },
+      {
+        "strategy_type": "kelly",
+        "risk_tolerance": 0.8,
+        "kelly_fraction": 0.5,
+        "min_confidence_threshold": 0.1,
+        "estimator_config": {
+          "estimator_type": "beta",
+          "alpha": 1.0,
+          "beta": 1.0,
+          "confidence_level": 0.95,
+          "name": "default_estimator"
+        },
+        "name": "aggressive",
+        "params": {}
+      }
+    ],
+    "meta_strategy": null
+  },
+  "summary": {
+    "num_runs": 5,
+    "mean_reward": -1.0,
+    "std_reward": 0.0,
+    "confidence_interval": [
+      -1.0,
+      -1.0
+    ],
+    "success_rate": 0.0,
+    "total_duration": 0.0007984638214111328,
+    "convergence_achieved": false
+  },
+  "individual_runs": [
+    {
+      "run_id": 0,
+      "seed": 191664963,
+      "reward": -1.0,
+      "steps": 10,
+      "success": false,
+      "duration": 0.00020241737365722656
+    },
+    {
+      "run_id": 1,
+      "seed": 1662057957,
+      "reward": -1.0,
+      "steps": 1,
+      "success": false,
+      "duration": 0.00010824203491210938
+    },
+    {
+      "run_id": 2,
+      "seed": 1405681631,
+      "reward": -1.0,
+      "steps": 3,
+      "success": false,
+      "duration": 0.00011205673217773438
+    },
+    {
+      "run_id": 3,
+      "seed": 942484272,
+      "reward": -1.0,
+      "steps": 7,
+      "success": false,
+      "duration": 0.00017690658569335938
+    },
+    {
+      "run_id": 4,
+      "seed": 929893137,
+      "reward": -1.0,
+      "steps": 5,
+      "success": false,
+      "duration": 0.0001327991485595703
+    }
+  ]
+}

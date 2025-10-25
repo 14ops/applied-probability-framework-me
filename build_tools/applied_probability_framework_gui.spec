@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for Applied Probability Framework.
-This file defines how to package the application into a Windows executable.
+PyInstaller spec file for Applied Probability Framework GUI.
+This builds a Windows GUI application with a graphical interface.
 """
 
 import os
@@ -18,62 +18,21 @@ sys.path.insert(0, str(src_python))
 
 block_cipher = None
 
-# Collect all Python files from src/python
-python_files = []
-for root, dirs, files in os.walk(src_python):
-    for file in files:
-        if file.endswith('.py'):
-            full_path = os.path.join(root, file)
-            python_files.append(full_path)
-
 # Define hidden imports (modules that PyInstaller might miss)
 hidden_imports = [
     'numpy',
-    'scipy',
-    'scipy.stats',
-    'scipy.special',
-    'pandas',
-    'matplotlib',
-    'matplotlib.pyplot',
-    'plotly',
-    'plotly.graph_objs',
-    'sklearn',
-    'sklearn.ensemble',
-    'sklearn.linear_model',
+    'tkinter',
+    'tkinter.ttk',
+    'tkinter.scrolledtext',
+    'tkinter.filedialog',
+    'tkinter.messagebox',
     # Framework modules
     'logger',
     'bayesian',
-    'sim_compare',
-    'meta_controller',
-    'bankroll_manager',
     'game_simulator',
-    'mathematical_core',
     'strategies',
     'utils',
     'register_plugins',
-    'advanced_strategies',
-    'rintaro_okabe_strategy',
-    'monte_carlo_tree_search',
-    'markov_decision_process',
-    'strategy_auto_evolution',
-    'confidence_weighted_ensembles',
-    'drl_environment',
-    'drl_agent',
-    'bayesian_mines',
-    'human_data_collector',
-    'adversarial_agent',
-    'adversarial_detector',
-    'adversarial_trainer',
-    'multi_agent_core',
-    'agent_comms',
-    'multi_agent_simulator',
-    'behavioral_value',
-    'behavioral_probability',
-    'visualizations.visualization',
-    'visualizations.advanced_visualizations',
-    'visualizations.comprehensive_visualizations',
-    'visualizations.specialized_visualizations',
-    'visualizations.realtime_heatmaps',
     'core',
     'core.base_estimator',
     'core.base_simulator',
@@ -103,7 +62,7 @@ if core_dir.exists():
     datas.append((str(core_dir), 'core'))
 
 a = Analysis(
-    [str(src_python / 'cli.py')],  # Main entry point
+    [str(src_python / 'gui.py')],  # GUI entry point
     pathex=[str(src_python)],
     binaries=[],
     datas=datas,
@@ -112,9 +71,14 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'tensorflow',  # Exclude heavy ML libraries if not needed
+        'tensorflow',
         'torch',
         'pgmpy',
+        'scipy',
+        'pandas',
+        'matplotlib',
+        'plotly',
+        'sklearn',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -129,12 +93,12 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='AppliedProbabilityFramework',
+    name='AppliedProbabilityFrameworkGUI',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # Console application
+    console=False,  # NO console window for GUI!
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -150,6 +114,6 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='AppliedProbabilityFramework',
+    name='AppliedProbabilityFrameworkGUI',
 )
 

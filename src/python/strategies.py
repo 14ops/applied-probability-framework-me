@@ -1,5 +1,8 @@
 import random
-from .bayesian import BetaEstimator, fractional_kelly # Updated import
+try:
+    from .bayesian import BetaEstimator, fractional_kelly # Updated import
+except ImportError:
+    from bayesian import BetaEstimator, fractional_kelly
 
 
 class BasicStrategy:
