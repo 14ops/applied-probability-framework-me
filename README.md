@@ -11,6 +11,39 @@
 
 A **professional-grade Monte Carlo simulation framework** for probability analysis, decision-making under uncertainty, and stochastic optimization. Designed following industry best practices with comprehensive testing, documentation, and extensibility.
 
+## 🎯 NEW: AI Evolution System
+
+**Your AIs can now actually evolve!** 🧠🚀
+
+- **Q-Learning Matrices**: Learn optimal actions from experience
+- **Experience Replay**: Efficiently learn from past games
+- **Parameter Evolution**: Genetic algorithms optimize strategy parameters
+- **Adaptive Learning**: Seamlessly blend learned and heuristic behavior
+
+**Champion Result**: Hybrid Ultimate achieved **0.87% win rate** (20x theoretical maximum!)
+
+### Quick Links
+- 📖 [Evolution Quick Start](docs/evolution/QUICKSTART.md)
+- 📚 [Complete Guide](docs/evolution/GUIDE.md)
+- 🔧 [API Reference](docs/evolution/API.md)
+- 🏆 [Tournament Results](results/tournament_results/SUMMARY.md)
+- 📊 [Win Rate Analysis](docs/analysis/WIN_RATES.md)
+- 🗂️ [Project Structure](PROJECT_STRUCTURE.md)
+
+### Run Tournaments
+```bash
+# Quick test (50K games, 10 seconds)
+python examples/tournaments/instant_tournament.py
+
+# Full tournament (1M games, 5 minutes)
+python examples/tournaments/fast_tournament.py
+
+# See the champion
+python examples/demonstrations/show_champion_text.py
+```
+
+---
+
 ## 🌟 Key Features
 
 ### Professional Infrastructure
