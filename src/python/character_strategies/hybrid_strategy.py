@@ -7,42 +7,68 @@ Dynamic blending of Senku (analytical) and Lelouch (strategic) based on game con
 
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional
-from core.base_strategy import BaseStrategy
+from core.adaptive_strategy import AdaptiveLearningStrategy
 from .senku_ishigami import SenkuIshigamiStrategy
 from .lelouch_vi_britannia import LelouchViBritanniaStrategy
 
 
-class HybridStrategy(BaseStrategy):
+class HybridStrategy(AdaptiveLearningStrategy):
     """
-    The Ultimate Fusion - Dynamic blending of Senku and Lelouch.
+    The Ultimate Fusion - Dynamic blending of Senku and Lelouch with AI Evolution.
     
     Key Features:
     - Game phase detection (Early, Mid, Late)
     - Board complexity assessment
     - Performance-based weight adjustment
     - Seamless strategy blending via sigmoid function
+    - Q-Learning Matrix for action value estimation
+    - Experience Replay for efficient learning
+    - Parameter Evolution via Genetic Algorithms
     """
     
     register = True
     plugin_name = "hybrid"
     
     def __init__(self, name: str = "Hybrid Strategy - Ultimate Fusion", config: Optional[Dict[str, Any]] = None):
-        super().__init__(name, config)
+        # Define evolvable parameters
+        parameter_ranges = {
+            'strategic_threshold': (0.3, 0.7),
+            'w_phase': (0.2, 0.6),
+            'w_complexity': (0.2, 0.6),
+            'w_performance': (0.1, 0.4),
+        }
+        
+        # Initialize adaptive learning with evolution
+        super().__init__(
+            name=name,
+            config=config,
+            use_q_learning=True,
+            use_experience_replay=True,
+            use_parameter_evolution=True,
+            parameter_ranges=parameter_ranges
+        )
         
         # Initialize sub-strategies
         self.senku = SenkuIshigamiStrategy(config=config)
         self.lelouch = LelouchViBritanniaStrategy(config=config)
         
-        # Blending parameters
+        # Blending parameters (can be evolved)
         self.strategic_threshold = config.get('strategic_threshold', 0.5) if config else 0.5
+        self.w_phase = config.get('w_phase', 0.4) if config else 0.4
+        self.w_complexity = config.get('w_complexity', 0.4) if config else 0.4
+        self.w_performance = config.get('w_performance', 0.2) if config else 0.2
         
         # Performance tracking
         self.recent_performance = []
         self.max_history = 10
         
-    def select_action(self, state: Any, valid_actions: Any) -> Any:
+        # Q-learning weight (balance between learned and heuristic)
+        self.q_learning_weight = config.get('q_learning_weight', 0.3) if config else 0.3
+        
+    def select_action_heuristic(self, state: Any, valid_actions: Any) -> Any:
         """
-        Select action by dynamically blending Senku and Lelouch strategies.
+        Heuristic action selection (override of AdaptiveLearningStrategy).
+        Dynamically blends Senku and Lelouch strategies.
         
         Args:
             state: Current game state
@@ -52,7 +78,7 @@ class HybridStrategy(BaseStrategy):
             (row, col) tuple for selected action
         """
         if not valid_actions:
-            raise ValueError("No valid actions available")
+            return None
         
         # Determine current game phase
         game_phase = self._determine_game_phase(state)
@@ -180,11 +206,10 @@ class HybridStrategy(BaseStrategy):
         # Performance contribution (poor performance might trigger Lelouch's strategic thinking)
         performance_contribution = 1.0 - performance_score  # Invert: poor performance = higher score
         
-        # Weighted combination
-        w_phase, w_complexity, w_performance = 0.4, 0.4, 0.2
-        strategic_score = (w_phase * phase_score + 
-                          w_complexity * complexity_score + 
-                          w_performance * performance_contribution)
+        # Weighted combination (using evolved weights)
+        strategic_score = (self.w_phase * phase_score + 
+                          self.w_complexity * complexity_score + 
+                          self.w_performance * performance_contribution)
         
         return strategic_score
     
@@ -197,7 +222,8 @@ class HybridStrategy(BaseStrategy):
         return 1.0 / (1.0 + np.exp(-10 * x))  # Steeper sigmoid (factor of 10)
     
     def update(self, state: Any, action: Any, reward: float, next_state: Any, done: bool) -> None:
-        """Update both sub-strategies and performance tracking."""
+        """Update learning matrices, sub-strategies, and performance tracking."""
+        # Call adaptive strategy update (handles Q-learning, replay, evolution)
         super().update(state, action, reward, next_state, done)
         
         # Update sub-strategies
@@ -212,10 +238,21 @@ class HybridStrategy(BaseStrategy):
             if len(self.recent_performance) > self.max_history:
                 self.recent_performance.pop(0)
     
+    def _apply_evolved_parameters(self, params: Dict[str, float]) -> None:
+        """Apply evolved parameters to strategy."""
+        super()._apply_evolved_parameters(params)
+        
+        # Update strategy-specific parameters
+        self.strategic_threshold = params.get('strategic_threshold', self.strategic_threshold)
+        self.w_phase = params.get('w_phase', self.w_phase)
+        self.w_complexity = params.get('w_complexity', self.w_complexity)
+        self.w_performance = params.get('w_performance', self.w_performance)
+    
     def reset(self) -> None:
         """Reset both sub-strategies."""
         super().reset()
         self.senku.reset()
         self.lelouch.reset()
+
 
 

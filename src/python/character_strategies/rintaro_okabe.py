@@ -8,12 +8,12 @@ Meta-game manipulation with worldline convergence and game theory.
 import random
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional
-from core.base_strategy import BaseStrategy
+from core.adaptive_strategy import AdaptiveLearningStrategy
 
 
-class RintaroOkabeStrategy(BaseStrategy):
+class RintaroOkabeStrategy(AdaptiveLearningStrategy):
     """
-    The Mad Scientist - Worldline convergence with game-theoretic exploitation.
+    The Mad Scientist - Worldline convergence with game-theoretic exploitation + AI Evolution.
     
     Key Features:
     - Game Theory Optimal (GTO) moves
@@ -21,33 +21,70 @@ class RintaroOkabeStrategy(BaseStrategy):
     - Psychological pressure and bluffing
     - Lab Member Consensus System
     - Timeline manipulation (adaptive learning)
+    - Q-Learning Matrix for temporal learning
+    - Experience Replay across worldlines
+    - Evolution of lab member personas
     """
     
     register = True
     plugin_name = "okabe"
     
     def __init__(self, name: str = "Rintaro Okabe - Mad Scientist", config: Optional[Dict[str, Any]] = None):
-        super().__init__(name, config)
+        # Define evolvable parameters (lab member personas)
+        parameter_ranges = {
+            'delta': (0.1, 0.5),  # GTO weight
+            'epsilon': (0.1, 0.3),  # Psychological weight
+            'worldline_weight': (0.3, 0.7),
+            'mayuri_risk': (0.1, 0.3),
+            'mayuri_aggression': (0.2, 0.4),
+            'daru_risk': (0.6, 0.9),
+            'daru_aggression': (0.7, 0.9),
+            'kurisu_risk': (0.4, 0.6),
+            'kurisu_aggression': (0.4, 0.6),
+        }
         
-        # Worldline parameters
+        # Initialize adaptive learning with evolution
+        super().__init__(
+            name=name,
+            config=config,
+            use_q_learning=True,
+            use_experience_replay=True,
+            use_parameter_evolution=True,
+            parameter_ranges=parameter_ranges
+        )
+        
+        # Worldline parameters (evolvable)
         self.delta = config.get('delta', 0.3) if config else 0.3  # GTO weight
         self.epsilon = config.get('epsilon', 0.2) if config else 0.2  # Psychological weight
         self.worldline_weight = config.get('worldline_weight', 0.5) if config else 0.5
         
-        # Lab Member personas (different strategic archetypes)
+        # Lab Member personas (different strategic archetypes - evolvable)
         self.lab_members = {
-            'mayuri': {'risk_tolerance': 0.2, 'aggression': 0.3},  # Conservative
-            'daru': {'risk_tolerance': 0.7, 'aggression': 0.8},    # Aggressive
-            'kurisu': {'risk_tolerance': 0.5, 'aggression': 0.5},  # Balanced/Logical
+            'mayuri': {
+                'risk_tolerance': config.get('mayuri_risk', 0.2) if config else 0.2,
+                'aggression': config.get('mayuri_aggression', 0.3) if config else 0.3
+            },  # Conservative
+            'daru': {
+                'risk_tolerance': config.get('daru_risk', 0.7) if config else 0.7,
+                'aggression': config.get('daru_aggression', 0.8) if config else 0.8
+            },    # Aggressive
+            'kurisu': {
+                'risk_tolerance': config.get('kurisu_risk', 0.5) if config else 0.5,
+                'aggression': config.get('kurisu_aggression', 0.5) if config else 0.5
+            },  # Balanced/Logical
         }
         
-        # Timeline tracking
+        # Timeline tracking (now includes cross-worldline learning)
         self.worldline_history = []
         self.divergence_meter = 0.0
         
-    def select_action(self, state: Any, valid_actions: Any) -> Any:
+        # Q-learning weight (Reading Steiner allows blending learned and heuristic)
+        self.q_learning_weight = config.get('q_learning_weight', 0.4) if config else 0.4
+        
+    def select_action_heuristic(self, state: Any, valid_actions: Any) -> Any:
         """
-        Select action using worldline convergence and multi-persona consensus.
+        Heuristic action selection (override of AdaptiveLearningStrategy).
+        Uses worldline convergence and multi-persona consensus.
         
         Args:
             state: Current game state
@@ -57,7 +94,7 @@ class RintaroOkabeStrategy(BaseStrategy):
             (row, col) tuple for selected action
         """
         if not valid_actions:
-            raise ValueError("No valid actions available")
+            return None
         
         # Detect opponent/system behavior
         opponent_behavior = self._detect_opponent_behavior(state)
@@ -256,7 +293,8 @@ class RintaroOkabeStrategy(BaseStrategy):
         return 1.0 - self._calculate_safety_probability(state, cell, valid_actions)
     
     def update(self, state: Any, action: Any, reward: float, next_state: Any, done: bool) -> None:
-        """Update worldline history and divergence meter."""
+        """Update learning matrices, worldline history, and divergence meter."""
+        # Call adaptive strategy update (handles Q-learning, replay, evolution)
         super().update(state, action, reward, next_state, done)
         
         # Record worldline outcome
@@ -273,10 +311,34 @@ class RintaroOkabeStrategy(BaseStrategy):
         else:
             self.divergence_meter = max(0, self.divergence_meter - 0.05)
     
+    def _apply_evolved_parameters(self, params: Dict[str, float]) -> None:
+        """Apply evolved parameters to strategy and lab members."""
+        super()._apply_evolved_parameters(params)
+        
+        # Update worldline parameters
+        self.delta = params.get('delta', self.delta)
+        self.epsilon = params.get('epsilon', self.epsilon)
+        self.worldline_weight = params.get('worldline_weight', self.worldline_weight)
+        
+        # Update lab member personas
+        self.lab_members['mayuri']['risk_tolerance'] = params.get('mayuri_risk', 
+                                                                   self.lab_members['mayuri']['risk_tolerance'])
+        self.lab_members['mayuri']['aggression'] = params.get('mayuri_aggression',
+                                                               self.lab_members['mayuri']['aggression'])
+        self.lab_members['daru']['risk_tolerance'] = params.get('daru_risk',
+                                                                 self.lab_members['daru']['risk_tolerance'])
+        self.lab_members['daru']['aggression'] = params.get('daru_aggression',
+                                                             self.lab_members['daru']['aggression'])
+        self.lab_members['kurisu']['risk_tolerance'] = params.get('kurisu_risk',
+                                                                   self.lab_members['kurisu']['risk_tolerance'])
+        self.lab_members['kurisu']['aggression'] = params.get('kurisu_aggression',
+                                                               self.lab_members['kurisu']['aggression'])
+    
     def reset(self) -> None:
         """Reset for new game - but keep worldline history for learning."""
         super().reset()
         # Keep worldline_history for cross-game learning
         # This is Okabe's "Reading Steiner" - memory across timelines
+
 
 
