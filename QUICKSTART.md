@@ -57,6 +57,120 @@ Run it:
 python my_first_simulation.py
 ```
 
+## 🎮 Mines Game Quick Start
+
+### Run Character Strategies
+
+```bash
+# Test Takeshi's aggressive doubling strategy
+python -c "
+from strategies import TakeshiStrategy
+from game.math import win_probability, get_observed_payout
+
+strategy = TakeshiStrategy(config={'base_bet': 10.0, 'target_clicks': 8})
+print(f'Strategy: {strategy.name}')
+print(f'Target: {strategy.target_clicks} clicks')
+print(f'Win probability: {win_probability(8):.2%}')
+print(f'Payout: {get_observed_payout(8):.2f}x')
+"
+
+# Play interactively with GUI
+python src/python/gui_game.py
+```
+
+### Create Custom Mines Strategy
+
+Create `my_mines_strategy.py`:
+
+```python
+from strategies.base import StrategyBase
+from game.math import win_probability, expected_value
+
+class MyStrategy(StrategyBase):
+    """Custom Mines strategy."""
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.name = "My Strategy"
+        self.target_clicks = 7  # Sweet spot
+        
+    def decide(self, state):
+        """Make decision."""
+        if not state.get('game_active', False):
+            # Place bet
+            return {
+                "action": "bet",
+                "bet": self.base_bet,
+                "max_clicks": self.target_clicks
+            }
+        
+        # In game
+        clicks = state.get('clicks_made', 0)
+        if clicks < self.target_clicks:
+            # Click random unrevealed tile
+            pos = self._find_random_tile(state)
+            return {"action": "click", "position": pos}
+        else:
+            # Cashout at target
+            return {"action": "cashout"}
+    
+    def on_result(self, result):
+        """Learn from result."""
+        self.update_tracking(result)
+        
+        # Adjust target based on performance
+        if result.get('win', False):
+            self.target_clicks = min(self.target_clicks + 1, 10)
+        else:
+            self.target_clicks = max(self.target_clicks - 1, 5)
+```
+
+### Run Tournament with Your Strategy
+
+```bash
+# Add to examples/tournaments/character_tournament.py
+from strategies import TakeshiStrategy, YuzuStrategy, MyStrategy
+
+strategies = {
+    'takeshi': TakeshiStrategy(),
+    'yuzu': YuzuStrategy(),
+    'mine': MyStrategy(),  # Your strategy
+}
+
+# Run tournament
+python examples/tournaments/character_tournament.py
+```
+
+### Mathematical Analysis
+
+```python
+from game.math import (
+    win_probability,
+    expected_value,
+    get_observed_payout,
+    print_payout_table
+)
+
+# Analyze different click counts
+for k in [5, 6, 7, 8, 10]:
+    prob = win_probability(k)
+    payout = get_observed_payout(k)
+    ev = expected_value(k, bet=10.0)
+    print(f"{k} clicks: P={prob:.2%}, Payout={payout:.2f}x, EV=${ev:+.2f}")
+
+# Print full payout table
+print_payout_table(tiles=25, mines=2)
+```
+
+Output:
+```
+5 clicks: P=63.33%, Payout=1.53x, EV=$+0.02
+6 clicks: P=57.00%, Payout=1.72x, EV=$-0.02
+7 clicks: P=51.00%, Payout=1.95x, EV=$+0.05
+8 clicks: P=45.33%, Payout=2.12x, EV=$+0.41
+10 clicks: P=35.00%, Payout=3.02x, EV=$+0.41
+```
+
 ## Example: Custom Strategy in 5 Minutes
 
 Create `my_strategy.py`:

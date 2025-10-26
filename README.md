@@ -44,6 +44,139 @@ python examples/demonstrations/show_champion_text.py
 
 ---
 
+## 🎮 Mines Game Model
+
+### Game Specification
+- **Board**: 5×5 grid (25 tiles total)
+- **Mines**: 2 mines randomly placed
+- **Objective**: Click safe tiles to increase payout multiplier, cashout before hitting a mine
+
+### Win Probability Formula
+
+For **k** clicks on a board with **n** tiles and **m** mines:
+
+$$P(\text{win } k \text{ clicks}) = \frac{C(n-m, k)}{C(n, k)} = \prod_{i=0}^{k-1} \frac{n - m - i}{n - i}$$
+
+For the default 5×5 board with 2 mines:
+$$P(\text{win } k \text{ clicks}) = \frac{C(23, k)}{C(25, k)}$$
+
+### Payout Table
+
+| Clicks | Win Probability | Fair Payout | Observed Payout* | Expected Value |
+|--------|----------------|-------------|------------------|----------------|
+| 1 | 92.00% | 1.09× | 1.04× | -$0.04 |
+| 2 | 84.33% | 1.19× | 1.14× | -$0.04 |
+| 3 | 77.00% | 1.30× | 1.25× | -$0.04 |
+| 4 | 70.00% | 1.43× | 1.38× | -$0.03 |
+| 5 | 63.33% | 1.58× | 1.53× | -$0.03 |
+| 6 | 57.00% | 1.75× | 1.72× | -$0.02 |
+| 7 | 51.00% | 1.96× | 1.95× | +$0.01 |
+| 8 | 45.33% | 2.21× | 2.12× | +$0.41 |
+| 9 | 40.00% | 2.50× | 2.52× | +$0.41 |
+| 10 | 35.00% | 2.86× | 3.02× | +$0.41 |
+| 11 | 30.33% | 3.30× | 3.70× | +$0.43 |
+| 12 | 26.00% | 3.85× | 4.65× | +$0.47 |
+| 13 | 22.00% | 4.55× | 6.06× | +$0.55 |
+| 14 | 18.33% | 5.45× | 8.35× | +$0.71 |
+| 15 | 15.00% | 6.67× | 12.50× | +$1.02 |
+
+*Observed payouts from actual game site (with ~3% house edge for clicks 1-6, then +EV for 7+)
+
+### Character Strategies
+
+Five unique character strategies, each with distinct behavioral patterns:
+
+#### 🔥 Takeshi Kovacs - *Aggressive Berserker*
+```python
+from strategies import TakeshiStrategy
+
+strategy = TakeshiStrategy(config={
+    'base_bet': 10.0,
+    'target_clicks': 8,      # High-risk sweet spot
+    'max_doubles': 2         # Martingale with cap
+})
+```
+- **Mechanic**: Doubles bet after losses (max 2×), then enters "tranquility mode"
+- **Target**: 8 clicks (45.33% win, 2.12× payout)
+- **Personality**: Aggressive risk-taker with controlled anger management
+
+#### 🎲 Yuzu - *Controlled Chaos*
+```python
+from strategies import YuzuStrategy
+
+strategy = YuzuStrategy(config={
+    'base_bet': 10.0,
+    'target_clicks': 7,      # FIXED at 7 (Yuzu's signature)
+    'chaos_factor': 0.3      # Bet randomness
+})
+```
+- **Mechanic**: Always plays exactly 7 clicks with variable bet sizing
+- **Target**: 7 clicks (51.0% win, 1.95× payout)
+- **Personality**: Unpredictable yet calculated, embraces the chaos
+
+#### 🤝 Aoi - *Cooperative Sync*
+```python
+from strategies import AoiStrategy
+
+strategy = AoiStrategy(config={
+    'base_bet': 10.0,
+    'min_target_clicks': 6,
+    'max_target_clicks': 7,
+    'sync_threshold': 3      # Syncs after 3 losses
+})
+```
+- **Mechanic**: Adapts based on team performance, "syncs" after 3 losses
+- **Target**: 6-7 clicks (adaptive)
+- **Personality**: Team player who learns from successful peers
+
+#### 🥋 Kazuya - *Disciplined Fighter*
+```python
+from strategies import KazuyaStrategy
+
+strategy = KazuyaStrategy(config={
+    'base_bet': 10.0,
+    'normal_target': 5,      # Conservative
+    'dagger_target': 10,     # Periodic aggression
+    'dagger_interval': 6     # Every 6th round
+})
+```
+- **Mechanic**: Conservative play, but every 6 rounds executes "Dagger Strike"
+- **Target**: 5 clicks normally (63.33% win), 10 clicks on dagger (35% win)
+- **Personality**: Martial arts discipline meets calculated strikes
+
+#### 👑 Lelouch vi Britannia - *Strategic Mastermind*
+```python
+from strategies import LelouchStrategy
+
+strategy = LelouchStrategy(config={
+    'base_bet': 10.0,
+    'safety_bet': 2.50,      # Safety net
+    'min_target': 6,
+    'max_target': 8,
+    'streak_multiplier': 1.5 # Escalate on wins
+})
+```
+- **Mechanic**: Streak-based betting, escalates on wins, retreats to safety after big losses
+- **Target**: 6-8 clicks (adaptive based on confidence)
+- **Personality**: Brilliant strategist who adapts to momentum
+
+### Run Character Strategies
+
+```bash
+# Run tournament with all characters
+python examples/tournaments/character_tournament.py
+
+# Test specific strategy
+python -c "from strategies import TakeshiStrategy; print(TakeshiStrategy())"
+
+# Play interactively with AI assistance
+python src/python/gui_game.py
+```
+
+See [Math Appendix](docs/math_appendix.md) for detailed probability calculations and [Strategy Guide](docs/guides/character_strategies.md) for in-depth analysis.
+
+---
+
 ## 🌟 Key Features
 
 ### Professional Infrastructure

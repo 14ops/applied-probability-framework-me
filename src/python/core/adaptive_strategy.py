@@ -392,6 +392,10 @@ class AdaptiveLearningStrategy(BaseStrategy):
         if self.use_q_learning and self.q_matrix:
             self.q_matrix.save(str(save_dir / 'q_matrix.json'))
         
+        # Save replay buffer
+        if self.use_experience_replay and self.replay_buffer:
+            self.replay_buffer.save(str(save_dir / 'replay_buffer.json'))
+        
         # Save evolution matrix
         if self.use_parameter_evolution and self.evolution_matrix:
             self.evolution_matrix.save(str(save_dir / 'evolution_matrix.json'))
@@ -417,6 +421,12 @@ class AdaptiveLearningStrategy(BaseStrategy):
             q_path = load_dir / 'q_matrix.json'
             if q_path.exists():
                 self.q_matrix.load(str(q_path))
+        
+        # Load replay buffer
+        if self.use_experience_replay and self.replay_buffer:
+            replay_path = load_dir / 'replay_buffer.json'
+            if replay_path.exists():
+                self.replay_buffer.load(str(replay_path))
         
         # Load evolution matrix
         if self.use_parameter_evolution and self.evolution_matrix:

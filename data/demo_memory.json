@@ -1,0 +1,40 @@
+{
+  "memories": [
+    {
+      "timestamp": 1761509457.8907552,
+      "category": "fact",
+      "content": "Hybrid Ultimate is the champion",
+      "confidence": 1.0,
+      "source": "tournament",
+      "validated": false,
+      "validation_count": 0,
+      "hash": "0f8ff3b6a6e33b6c"
+    },
+    {
+      "timestamp": 1761509457.890782,
+      "category": "fact",
+      "content": "Win rate: 0.87%",
+      "confidence": 1.0,
+      "source": "tournament",
+      "validated": false,
+      "validation_count": 0,
+      "hash": "e61f8d2246dd4fe3"
+    },
+    {
+      "timestamp": 1761509457.8907874,
+      "category": "fact",
+      "content": "10 million games played",
+      "confidence": 1.0,
+      "source": "tournament",
+      "validated": false,
+      "validation_count": 0,
+      "hash": "c599bdcf0c7b8f82"
+    }
+  ],
+  "statistics": {
+    "total_stored": 3,
+    "validated_count": 0,
+    "contradictions_found": 0,
+    "hallucinations_prevented": 0
+  }
+}

@@ -1,484 +1,598 @@
 """
-AI Memory System - Prevents Hallucinations Through Persistent State Tracking
+AI Memory and Tracking System
 
-This system maintains accurate records of:
-- Project structure and file locations
-- Code statistics and metrics
-- Git state and commit history
-- Configuration values
-- Test results and coverage
-- Documentation locations
-- Known facts and verified information
-
-Prevents hallucinations by always checking against stored state.
+This module implements a comprehensive memory system for AI agents to prevent
+hallucinations by:
+- Tracking all facts and decisions
+- Maintaining persistent memory across sessions
+- Validating information against ground truth
+- Detecting and preventing hallucinations
+- Providing audit trails
 """
 
 import json
-import os
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Any, Optional
 import hashlib
+import time
+from typing import Any, Dict, List, Optional, Tuple, Set
+from dataclasses import dataclass, asdict, field
+from pathlib import Path
+from collections import defaultdict, deque
+import numpy as np
 
 
-class AIMemorySystem:
-    """
-    Persistent memory system for AI assistants.
+@dataclass
+class MemoryEntry:
+    """Single memory entry with validation."""
+    timestamp: float
+    category: str  # 'fact', 'decision', 'outcome', 'observation'
+    content: Any
+    confidence: float  # 0.0 to 1.0
+    source: str  # Where this came from
+    validated: bool = False
+    validation_count: int = 0
+    hash: str = field(default='')
     
-    Stores verified facts, project state, and historical data
-    to prevent hallucinations and maintain consistency.
+    def __post_init__(self):
+        """Generate hash for content integrity."""
+        if not self.hash:
+            content_str = json.dumps(self.content, sort_keys=True)
+            self.hash = hashlib.sha256(content_str.encode()).hexdigest()[:16]
+    
+    def to_dict(self) -> Dict:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class ValidationResult:
+    """Result of validating information."""
+    is_valid: bool
+    confidence: float
+    reason: str
+    contradictions: List[str] = field(default_factory=list)
+    supporting_evidence: List[str] = field(default_factory=list)
+
+
+class MemoryBank:
+    """
+    Persistent memory bank for AI agents.
+    
+    Prevents hallucinations by:
+    - Storing verified facts
+    - Cross-referencing information
+    - Detecting contradictions
+    - Tracking confidence levels
     """
     
-    def __init__(self, memory_file: str = "ai_memory.json"):
+    def __init__(self, memory_file: Optional[str] = None):
         """
-        Initialize memory system.
+        Initialize memory bank.
         
         Args:
-            memory_file: Path to persistent memory storage
+            memory_file: Path to persistent memory file
         """
-        self.memory_file = Path(memory_file)
-        self.memory: Dict[str, Any] = self._load_memory()
+        self.memory_file = memory_file
         
-    def _load_memory(self) -> Dict[str, Any]:
-        """Load memory from disk or create new."""
-        if self.memory_file.exists():
-            try:
-                with open(self.memory_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"Warning: Could not load memory: {e}")
-                return self._create_empty_memory()
-        return self._create_empty_memory()
-    
-    def _create_empty_memory(self) -> Dict[str, Any]:
-        """Create empty memory structure."""
-        return {
-            'project': {
-                'name': 'Applied Probability Framework',
-                'version': '1.0.0',
-                'repository': 'https://github.com/14ops/applied-probability-framework-me',
-            },
-            'structure': {
-                'directories': {},
-                'files': {},
-                'last_scanned': None,
-            },
-            'code_stats': {
-                'total_lines': 0,
-                'python_files': 0,
-                'test_files': 0,
-                'last_updated': None,
-            },
-            'git': {
-                'branch': 'main',
-                'last_commit': None,
-                'commits': [],
-            },
-            'facts': {
-                'verified': {},
-                'deprecated': {},
-            },
-            'configurations': {},
-            'test_results': [],
-            'documentation': {},
-            'changelog': [],
-            'metadata': {
-                'created': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat(),
-                'updates_count': 0,
-            }
-        }
-    
-    def save(self):
-        """Save memory to disk."""
-        self.memory['metadata']['last_updated'] = datetime.now().isoformat()
-        self.memory['metadata']['updates_count'] += 1
+        # Memory storage
+        self.memories: List[MemoryEntry] = []
+        self.memory_index: Dict[str, List[int]] = defaultdict(list)  # category -> indices
+        self.fact_database: Dict[str, MemoryEntry] = {}  # hash -> memory
         
-        with open(self.memory_file, 'w') as f:
-            json.dump(self.memory, f, indent=2)
-    
-    # ========== Project Structure ==========
-    
-    def scan_project_structure(self, root_dir: str = "."):
-        """Scan and store project structure."""
-        root = Path(root_dir)
+        # Statistics
+        self.total_stored = 0
+        self.validated_count = 0
+        self.contradictions_found = 0
+        self.hallucinations_prevented = 0
         
-        directories = {}
-        files = {}
-        
-        for path in root.rglob("*"):
-            rel_path = str(path.relative_to(root))
-            
-            # Skip hidden and cache directories
-            if any(part.startswith('.') for part in path.parts):
-                continue
-            if '__pycache__' in path.parts or 'node_modules' in path.parts:
-                continue
-            
-            if path.is_dir():
-                directories[rel_path] = {
-                    'exists': True,
-                    'type': 'directory',
-                    'last_verified': datetime.now().isoformat(),
-                }
-            elif path.is_file():
-                files[rel_path] = {
-                    'exists': True,
-                    'size': path.stat().st_size,
-                    'type': path.suffix,
-                    'last_verified': datetime.now().isoformat(),
-                }
-        
-        self.memory['structure']['directories'] = directories
-        self.memory['structure']['files'] = files
-        self.memory['structure']['last_scanned'] = datetime.now().isoformat()
-        
-        self.save()
-        
-        return {
-            'directories_count': len(directories),
-            'files_count': len(files),
-        }
+        # Load existing memories
+        if memory_file and Path(memory_file).exists():
+            self.load(memory_file)
     
-    def verify_path_exists(self, path: str) -> bool:
-        """Verify if a path exists (check against stored state)."""
-        return (path in self.memory['structure']['files'] or 
-                path in self.memory['structure']['directories'])
-    
-    def get_file_location(self, filename: str) -> Optional[str]:
-        """Find file location in project."""
-        for path in self.memory['structure']['files']:
-            if path.endswith(filename):
-                return path
-        return None
-    
-    # ========== Code Statistics ==========
-    
-    def update_code_stats(self, root_dir: str = "."):
-        """Update code statistics."""
-        root = Path(root_dir)
-        
-        total_lines = 0
-        python_files = 0
-        test_files = 0
-        
-        for py_file in root.rglob("*.py"):
-            if any(part.startswith('.') for part in py_file.parts):
-                continue
-            if '__pycache__' in py_file.parts:
-                continue
-            
-            python_files += 1
-            
-            if 'test' in py_file.name.lower():
-                test_files += 1
-            
-            try:
-                with open(py_file, 'r', encoding='utf-8') as f:
-                    total_lines += len(f.readlines())
-            except:
-                pass
-        
-        self.memory['code_stats'] = {
-            'total_lines': total_lines,
-            'python_files': python_files,
-            'test_files': test_files,
-            'last_updated': datetime.now().isoformat(),
-        }
-        
-        self.save()
-        
-        return self.memory['code_stats']
-    
-    def get_code_stats(self) -> Dict[str, Any]:
-        """Get current code statistics."""
-        return self.memory['code_stats']
-    
-    # ========== Git Tracking ==========
-    
-    def record_git_commit(self, commit_hash: str, message: str, files_changed: int):
-        """Record a git commit."""
-        commit = {
-            'hash': commit_hash,
-            'message': message,
-            'files_changed': files_changed,
-            'timestamp': datetime.now().isoformat(),
-        }
-        
-        self.memory['git']['commits'].append(commit)
-        self.memory['git']['last_commit'] = commit
-        
-        # Keep only last 100 commits
-        if len(self.memory['git']['commits']) > 100:
-            self.memory['git']['commits'] = self.memory['git']['commits'][-100:]
-        
-        self.save()
-    
-    def get_last_commit(self) -> Optional[Dict[str, Any]]:
-        """Get last recorded commit."""
-        return self.memory['git'].get('last_commit')
-    
-    def get_commit_history(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent commit history."""
-        return self.memory['git']['commits'][-limit:]
-    
-    # ========== Verified Facts ==========
-    
-    def store_fact(self, category: str, key: str, value: Any, 
-                   verification_method: str = "manual"):
+    def store(
+        self, 
+        category: str, 
+        content: Any, 
+        confidence: float = 1.0,
+        source: str = "unknown"
+    ) -> MemoryEntry:
         """
-        Store a verified fact.
+        Store new information in memory.
         
         Args:
-            category: Category of fact (e.g., 'file_locations', 'statistics')
-            key: Unique key for the fact
-            value: The fact value
-            verification_method: How it was verified
+            category: Type of information
+            content: The actual information
+            confidence: Confidence level (0.0 to 1.0)
+            source: Source of information
+            
+        Returns:
+            Created memory entry
         """
-        if category not in self.memory['facts']['verified']:
-            self.memory['facts']['verified'][category] = {}
+        entry = MemoryEntry(
+            timestamp=time.time(),
+            category=category,
+            content=content,
+            confidence=confidence,
+            source=source
+        )
         
-        self.memory['facts']['verified'][category][key] = {
-            'value': value,
-            'verification_method': verification_method,
-            'timestamp': datetime.now().isoformat(),
-            'hash': hashlib.md5(str(value).encode()).hexdigest(),
-        }
+        # Check for duplicates
+        if entry.hash in self.fact_database:
+            existing = self.fact_database[entry.hash]
+            existing.validation_count += 1
+            existing.confidence = min(1.0, existing.confidence + 0.1)
+            return existing
         
-        self.save()
-    
-    def get_fact(self, category: str, key: str) -> Optional[Any]:
-        """Retrieve a verified fact."""
-        if category in self.memory['facts']['verified']:
-            if key in self.memory['facts']['verified'][category]:
-                return self.memory['facts']['verified'][category][key]['value']
-        return None
-    
-    def verify_fact(self, category: str, key: str, expected_value: Any) -> bool:
-        """Verify if a fact matches stored value."""
-        stored = self.get_fact(category, key)
-        return stored == expected_value
-    
-    def deprecate_fact(self, category: str, key: str, reason: str):
-        """Mark a fact as deprecated."""
-        if category in self.memory['facts']['verified']:
-            if key in self.memory['facts']['verified'][category]:
-                fact = self.memory['facts']['verified'][category].pop(key)
-                
-                if category not in self.memory['facts']['deprecated']:
-                    self.memory['facts']['deprecated'][category] = {}
-                
-                fact['deprecation_reason'] = reason
-                fact['deprecation_time'] = datetime.now().isoformat()
-                
-                self.memory['facts']['deprecated'][category][key] = fact
-                
-                self.save()
-    
-    # ========== Configuration Tracking ==========
-    
-    def store_config(self, name: str, config: Dict[str, Any]):
-        """Store a configuration."""
-        self.memory['configurations'][name] = {
-            'config': config,
-            'timestamp': datetime.now().isoformat(),
-        }
-        self.save()
-    
-    def get_config(self, name: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a configuration."""
-        if name in self.memory['configurations']:
-            return self.memory['configurations'][name]['config']
-        return None
-    
-    # ========== Test Results ==========
-    
-    def record_test_run(self, passed: int, failed: int, total: int, 
-                       coverage: float, duration: float):
-        """Record test run results."""
-        result = {
-            'passed': passed,
-            'failed': failed,
-            'total': total,
-            'coverage': coverage,
-            'duration': duration,
-            'timestamp': datetime.now().isoformat(),
-        }
+        # Store new memory
+        idx = len(self.memories)
+        self.memories.append(entry)
+        self.memory_index[category].append(idx)
+        self.fact_database[entry.hash] = entry
+        self.total_stored += 1
         
-        self.memory['test_results'].append(result)
+        return entry
+    
+    def recall(
+        self, 
+        category: Optional[str] = None,
+        min_confidence: float = 0.0,
+        limit: Optional[int] = None
+    ) -> List[MemoryEntry]:
+        """
+        Recall memories by category and confidence.
         
-        # Keep only last 50 test runs
-        if len(self.memory['test_results']) > 50:
-            self.memory['test_results'] = self.memory['test_results'][-50:]
+        Args:
+            category: Filter by category (None = all)
+            min_confidence: Minimum confidence threshold
+            limit: Maximum number to return
+            
+        Returns:
+            List of matching memories
+        """
+        if category:
+            indices = self.memory_index.get(category, [])
+            candidates = [self.memories[i] for i in indices]
+        else:
+            candidates = self.memories
         
-        self.save()
-    
-    def get_latest_test_results(self) -> Optional[Dict[str, Any]]:
-        """Get most recent test results."""
-        if self.memory['test_results']:
-            return self.memory['test_results'][-1]
-        return None
-    
-    # ========== Documentation Tracking ==========
-    
-    def register_documentation(self, doc_path: str, title: str, 
-                              description: str, category: str):
-        """Register documentation file."""
-        self.memory['documentation'][doc_path] = {
-            'title': title,
-            'description': description,
-            'category': category,
-            'timestamp': datetime.now().isoformat(),
-        }
-        self.save()
-    
-    def find_documentation(self, search_term: str) -> List[Dict[str, Any]]:
-        """Find documentation by search term."""
-        results = []
+        # Filter by confidence
+        results = [m for m in candidates if m.confidence >= min_confidence]
         
-        for path, info in self.memory['documentation'].items():
-            if (search_term.lower() in path.lower() or
-                search_term.lower() in info['title'].lower() or
-                search_term.lower() in info['description'].lower()):
-                results.append({
-                    'path': path,
-                    **info
-                })
+        # Sort by timestamp (most recent first)
+        results.sort(key=lambda m: m.timestamp, reverse=True)
+        
+        if limit:
+            results = results[:limit]
         
         return results
     
-    # ========== Changelog ==========
+    def validate(self, content: Any, category: str) -> ValidationResult:
+        """
+        Validate information against memory.
+        
+        Args:
+            content: Information to validate
+            category: Category of information
+            
+        Returns:
+            Validation result
+        """
+        # Create temporary entry for comparison
+        temp_entry = MemoryEntry(
+            timestamp=time.time(),
+            category=category,
+            content=content,
+            confidence=0.0,
+            source="validation"
+        )
+        
+        # Check if exact match exists
+        if temp_entry.hash in self.fact_database:
+            existing = self.fact_database[temp_entry.hash]
+            return ValidationResult(
+                is_valid=True,
+                confidence=existing.confidence,
+                reason="Exact match in memory",
+                supporting_evidence=[f"Validated {existing.validation_count} times"]
+            )
+        
+        # Look for similar content in same category
+        similar_memories = self.recall(category=category, min_confidence=0.5)
+        
+        if not similar_memories:
+            return ValidationResult(
+                is_valid=False,
+                confidence=0.0,
+                reason="No similar information in memory"
+            )
+        
+        # Check for contradictions
+        contradictions = []
+        supporting = []
+        
+        for memory in similar_memories:
+            similarity = self._calculate_similarity(content, memory.content)
+            
+            if similarity > 0.8:
+                supporting.append(f"Similar to memory from {memory.source}")
+            elif similarity < 0.3:
+                contradictions.append(
+                    f"Contradicts memory: {str(memory.content)[:50]}..."
+                )
+        
+        if contradictions:
+            self.contradictions_found += 1
+            return ValidationResult(
+                is_valid=False,
+                confidence=0.0,
+                reason="Contradicts existing memories",
+                contradictions=contradictions
+            )
+        
+        if supporting:
+            return ValidationResult(
+                is_valid=True,
+                confidence=0.7,
+                reason="Supported by similar memories",
+                supporting_evidence=supporting
+            )
+        
+        return ValidationResult(
+            is_valid=False,
+            confidence=0.3,
+            reason="Uncertain - no strong evidence either way"
+        )
     
-    def add_changelog_entry(self, version: str, changes: List[str], 
-                           change_type: str = "feature"):
-        """Add changelog entry."""
-        entry = {
-            'version': version,
-            'changes': changes,
-            'type': change_type,
-            'timestamp': datetime.now().isoformat(),
+    def _calculate_similarity(self, content1: Any, content2: Any) -> float:
+        """Calculate similarity between two pieces of content."""
+        # Convert to strings for comparison
+        str1 = json.dumps(content1, sort_keys=True) if not isinstance(content1, str) else content1
+        str2 = json.dumps(content2, sort_keys=True) if not isinstance(content2, str) else content2
+        
+        # Simple string similarity (can be improved with NLP)
+        if str1 == str2:
+            return 1.0
+        
+        # Jaccard similarity on words
+        words1 = set(str1.lower().split())
+        words2 = set(str2.lower().split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def detect_hallucination(self, claimed_fact: Dict) -> Tuple[bool, str]:
+        """
+        Detect if a claimed fact is a hallucination.
+        
+        Args:
+            claimed_fact: Fact being claimed
+            
+        Returns:
+            (is_hallucination, reason)
+        """
+        validation = self.validate(claimed_fact, category="fact")
+        
+        if not validation.is_valid and validation.confidence < 0.3:
+            self.hallucinations_prevented += 1
+            return True, validation.reason
+        
+        if validation.contradictions:
+            self.hallucinations_prevented += 1
+            return True, f"Contradicts: {', '.join(validation.contradictions[:2])}"
+        
+        return False, "Fact validated"
+    
+    def get_ground_truth(self, query: str, category: str) -> Optional[MemoryEntry]:
+        """
+        Get the most confident ground truth for a query.
+        
+        Args:
+            query: Query string
+            category: Category to search
+            
+        Returns:
+            Most confident memory or None
+        """
+        memories = self.recall(category=category, min_confidence=0.7)
+        
+        if not memories:
+            return None
+        
+        # Return most validated memory
+        memories.sort(key=lambda m: (m.validation_count, m.confidence), reverse=True)
+        return memories[0]
+    
+    def save(self, filepath: Optional[str] = None) -> None:
+        """Save memory bank to disk."""
+        save_path = filepath or self.memory_file
+        
+        if not save_path:
+            raise ValueError("No filepath provided")
+        
+        data = {
+            'memories': [m.to_dict() for m in self.memories],
+            'statistics': {
+                'total_stored': self.total_stored,
+                'validated_count': self.validated_count,
+                'contradictions_found': self.contradictions_found,
+                'hallucinations_prevented': self.hallucinations_prevented,
+            }
         }
         
-        self.memory['changelog'].append(entry)
-        self.save()
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(save_path, 'w') as f:
+            json.dump(data, f, indent=2)
     
-    def get_changelog(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent changelog entries."""
-        return self.memory['changelog'][-limit:]
-    
-    # ========== Utility Methods ==========
-    
-    def get_memory_summary(self) -> Dict[str, Any]:
-        """Get summary of stored memory."""
-        return {
-            'directories_tracked': len(self.memory['structure']['directories']),
-            'files_tracked': len(self.memory['structure']['files']),
-            'code_lines': self.memory['code_stats']['total_lines'],
-            'python_files': self.memory['code_stats']['python_files'],
-            'commits_recorded': len(self.memory['git']['commits']),
-            'verified_facts': sum(len(facts) for facts in self.memory['facts']['verified'].values()),
-            'configurations': len(self.memory['configurations']),
-            'test_runs': len(self.memory['test_results']),
-            'docs_registered': len(self.memory['documentation']),
-            'changelog_entries': len(self.memory['changelog']),
-            'last_updated': self.memory['metadata']['last_updated'],
-            'updates_count': self.memory['metadata']['updates_count'],
-        }
-    
-    def export_memory(self, filepath: str):
-        """Export memory to file."""
-        with open(filepath, 'w') as f:
-            json.dump(self.memory, f, indent=2)
-    
-    def import_memory(self, filepath: str):
-        """Import memory from file."""
+    def load(self, filepath: str) -> None:
+        """Load memory bank from disk."""
         with open(filepath, 'r') as f:
-            self.memory = json.load(f)
-        self.save()
+            data = json.load(f)
+        
+        # Reconstruct memories
+        self.memories = []
+        for mem_dict in data['memories']:
+            entry = MemoryEntry(**mem_dict)
+            self.memories.append(entry)
+            
+            # Rebuild indices
+            idx = len(self.memories) - 1
+            self.memory_index[entry.category].append(idx)
+            self.fact_database[entry.hash] = entry
+        
+        # Load statistics
+        stats = data.get('statistics', {})
+        self.total_stored = stats.get('total_stored', 0)
+        self.validated_count = stats.get('validated_count', 0)
+        self.contradictions_found = stats.get('contradictions_found', 0)
+        self.hallucinations_prevented = stats.get('hallucinations_prevented', 0)
     
-    def clear_memory(self, confirm: bool = False):
-        """Clear all memory (requires confirmation)."""
-        if confirm:
-            self.memory = self._create_empty_memory()
-            self.save()
+    def get_statistics(self) -> Dict:
+        """Get memory statistics."""
+        return {
+            'total_memories': len(self.memories),
+            'by_category': {cat: len(indices) for cat, indices in self.memory_index.items()},
+            'validated_count': self.validated_count,
+            'contradictions_found': self.contradictions_found,
+            'hallucinations_prevented': self.hallucinations_prevented,
+            'average_confidence': np.mean([m.confidence for m in self.memories]) if self.memories else 0.0,
+        }
 
 
-# ========== Convenience Functions ==========
-
-_global_memory: Optional[AIMemorySystem] = None
-
-
-def get_memory(memory_file: str = "ai_memory.json") -> AIMemorySystem:
-    """Get global memory system instance."""
-    global _global_memory
-    if _global_memory is None:
-        _global_memory = AIMemorySystem(memory_file)
-    return _global_memory
-
-
-def quick_scan(root_dir: str = ".") -> Dict[str, Any]:
-    """Quick scan of project and update memory."""
-    memory = get_memory()
+class StateTracker:
+    """
+    Track AI state across time to detect inconsistencies.
     
-    print("📊 Scanning project...")
-    structure_stats = memory.scan_project_structure(root_dir)
-    code_stats = memory.update_code_stats(root_dir)
+    Maintains:
+    - Game state history
+    - Decision history
+    - Performance metrics
+    - Consistency checks
+    """
     
-    print(f"✓ Tracked {structure_stats['directories_count']} directories")
-    print(f"✓ Tracked {structure_stats['files_count']} files")
-    print(f"✓ Found {code_stats['python_files']} Python files")
-    print(f"✓ Total {code_stats['total_lines']:,} lines of code")
+    def __init__(self, max_history: int = 1000):
+        """
+        Initialize state tracker.
+        
+        Args:
+            max_history: Maximum states to keep in memory
+        """
+        self.max_history = max_history
+        
+        # State tracking
+        self.state_history: deque = deque(maxlen=max_history)
+        self.decision_history: deque = deque(maxlen=max_history)
+        self.outcome_history: deque = deque(maxlen=max_history)
+        
+        # Consistency tracking
+        self.consistency_score = 1.0
+        self.inconsistencies_detected = 0
+        
+        # Performance tracking
+        self.wins = 0
+        self.losses = 0
+        self.total_reward = 0.0
     
-    return memory.get_memory_summary()
-
-
-def store_project_fact(key: str, value: Any):
-    """Store a verified project fact."""
-    memory = get_memory()
-    memory.store_fact('project', key, value, 'verified')
-    print(f"✓ Stored fact: {key} = {value}")
-
-
-def verify_project_fact(key: str, value: Any) -> bool:
-    """Verify a project fact against memory."""
-    memory = get_memory()
-    stored = memory.get_fact('project', key)
+    def record_state(self, state: Dict, timestamp: Optional[float] = None) -> None:
+        """Record current state."""
+        self.state_history.append({
+            'timestamp': timestamp or time.time(),
+            'state': state,
+        })
     
-    if stored is None:
-        print(f"⚠️  No stored value for: {key}")
-        return False
+    def record_decision(
+        self, 
+        state: Dict, 
+        action: Any, 
+        reasoning: str,
+        timestamp: Optional[float] = None
+    ) -> None:
+        """Record decision made."""
+        self.decision_history.append({
+            'timestamp': timestamp or time.time(),
+            'state': state,
+            'action': action,
+            'reasoning': reasoning,
+        })
     
-    if stored == value:
-        print(f"✓ Verified: {key} = {value}")
+    def record_outcome(
+        self, 
+        reward: float, 
+        success: bool,
+        timestamp: Optional[float] = None
+    ) -> None:
+        """Record outcome of decision."""
+        self.outcome_history.append({
+            'timestamp': timestamp or time.time(),
+            'reward': reward,
+            'success': success,
+        })
+        
+        # Update performance
+        if success:
+            self.wins += 1
+        else:
+            self.losses += 1
+        
+        self.total_reward += reward
+    
+    def check_consistency(self, current_state: Dict, claimed_fact: Dict) -> bool:
+        """
+        Check if claimed fact is consistent with history.
+        
+        Args:
+            current_state: Current game state
+            claimed_fact: Fact being claimed
+            
+        Returns:
+            True if consistent
+        """
+        if not self.state_history:
+            return True  # No history to compare
+        
+        # Check against recent states
+        recent_states = list(self.state_history)[-10:]
+        
+        for hist in recent_states:
+            # Check for contradictions
+            if self._contradicts(hist['state'], claimed_fact):
+                self.inconsistencies_detected += 1
+                self.consistency_score *= 0.95
+                return False
+        
         return True
-    else:
-        print(f"✗ Mismatch: {key}")
-        print(f"  Expected: {value}")
-        print(f"  Stored: {stored}")
+    
+    def _contradicts(self, historical_state: Dict, claimed_fact: Dict) -> bool:
+        """Check if claimed fact contradicts historical state."""
+        # Simple contradiction detection
+        for key, value in claimed_fact.items():
+            if key in historical_state:
+                if historical_state[key] != value:
+                    # Values differ - potential contradiction
+                    return True
+        
         return False
+    
+    def get_confidence(self) -> float:
+        """Get current confidence in AI's state tracking."""
+        return self.consistency_score
+    
+    def get_statistics(self) -> Dict:
+        """Get tracking statistics."""
+        return {
+            'states_tracked': len(self.state_history),
+            'decisions_tracked': len(self.decision_history),
+            'outcomes_tracked': len(self.outcome_history),
+            'win_rate': self.wins / max(self.wins + self.losses, 1),
+            'total_reward': self.total_reward,
+            'consistency_score': self.consistency_score,
+            'inconsistencies_detected': self.inconsistencies_detected,
+        }
 
 
-if __name__ == "__main__":
-    # Example usage
-    print("AI Memory System - Preventing Hallucinations\n")
+class HallucinationDetector:
+    """
+    Detect and prevent AI hallucinations.
     
-    # Quick scan
-    stats = quick_scan()
+    Methods:
+    - Fact checking against memory
+    - Consistency validation
+    - Confidence scoring
+    - Uncertainty quantification
+    """
     
-    print("\n📋 Memory Summary:")
-    for key, value in stats.items():
-        print(f"  {key}: {value}")
+    def __init__(
+        self, 
+        memory_bank: MemoryBank,
+        state_tracker: StateTracker,
+        confidence_threshold: float = 0.7
+    ):
+        """
+        Initialize hallucination detector.
+        
+        Args:
+            memory_bank: Memory bank for fact checking
+            state_tracker: State tracker for consistency
+            confidence_threshold: Minimum confidence to accept facts
+        """
+        self.memory_bank = memory_bank
+        self.state_tracker = state_tracker
+        self.confidence_threshold = confidence_threshold
+        
+        # Detection statistics
+        self.checks_performed = 0
+        self.hallucinations_detected = 0
+        self.uncertain_claims = 0
     
-    # Store some facts
-    print("\n💾 Storing verified facts...")
-    store_project_fact("champion_strategy", "Hybrid Ultimate")
-    store_project_fact("champion_win_rate", 0.87)
-    store_project_fact("total_tournament_games", 10_000_000)
+    def check_claim(
+        self, 
+        claim: Dict, 
+        category: str = "fact"
+    ) -> Tuple[bool, float, str]:
+        """
+        Check if a claim is valid or a hallucination.
+        
+        Args:
+            claim: Claim to check
+            category: Category of claim
+            
+        Returns:
+            (is_valid, confidence, reason)
+        """
+        self.checks_performed += 1
+        
+        # Validate against memory
+        validation = self.memory_bank.validate(claim, category)
+        
+        # Check consistency with state
+        consistent = self.state_tracker.check_consistency({}, claim)
+        
+        # Combined score
+        memory_score = validation.confidence
+        consistency_score = 1.0 if consistent else 0.0
+        combined_confidence = (memory_score * 0.7 + consistency_score * 0.3)
+        
+        # Determine if valid
+        if combined_confidence < self.confidence_threshold:
+            if validation.contradictions:
+                self.hallucinations_detected += 1
+                return False, combined_confidence, "Contradicts known facts"
+            else:
+                self.uncertain_claims += 1
+                return False, combined_confidence, "Insufficient confidence"
+        
+        return True, combined_confidence, "Validated"
     
-    # Verify facts
-    print("\n🔍 Verifying facts...")
-    verify_project_fact("champion_strategy", "Hybrid Ultimate")
-    verify_project_fact("champion_win_rate", 0.87)
-    
-    print("\n✅ Memory system active!")
+    def get_statistics(self) -> Dict:
+        """Get detection statistics."""
+        return {
+            'checks_performed': self.checks_performed,
+            'hallucinations_detected': self.hallucinations_detected,
+            'uncertain_claims': self.uncertain_claims,
+            'detection_rate': self.hallucinations_detected / max(self.checks_performed, 1),
+        }
 
+
+def create_memory_system(memory_file: str = "data/ai_memory.json") -> Dict:
+    """
+    Create complete memory system for AI.
+    
+    Args:
+        memory_file: Path to persistent memory file
+        
+    Returns:
+        Dictionary with all components
+    """
+    memory_bank = MemoryBank(memory_file)
+    state_tracker = StateTracker()
+    hallucination_detector = HallucinationDetector(memory_bank, state_tracker)
+    
+    return {
+        'memory_bank': memory_bank,
+        'state_tracker': state_tracker,
+        'hallucination_detector': hallucination_detector,
+    }

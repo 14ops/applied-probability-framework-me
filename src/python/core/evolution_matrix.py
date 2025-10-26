@@ -481,6 +481,42 @@ class ExperienceReplayBuffer:
         """Clear all experiences from buffer."""
         self.buffer.clear()
         self.priorities.clear()
+    
+    def save(self, filepath: str) -> None:
+        """Save experience replay buffer to disk."""
+        data = {
+            'experiences': [exp.to_dict() for exp in self.buffer],
+            'priorities': list(self.priorities),
+            'total_experiences': self.total_experiences,
+            'params': {
+                'max_size': self.max_size,
+                'prioritized': self.prioritized,
+                'alpha': self.alpha,
+                'beta': self.beta,
+                'beta_increment': self.beta_increment,
+            }
+        }
+        
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+    
+    def load(self, filepath: str) -> None:
+        """Load experience replay buffer from disk."""
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        
+        # Reconstruct experiences
+        self.buffer.clear()
+        for exp_dict in data['experiences']:
+            experience = Experience(**exp_dict)
+            self.buffer.append(experience)
+        
+        # Reconstruct priorities
+        self.priorities.clear()
+        for priority in data['priorities']:
+            self.priorities.append(priority)
+        
+        self.total_experiences = data['total_experiences']
 
 
 class EvolutionMatrix:

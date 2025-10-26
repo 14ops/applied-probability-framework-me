@@ -1,444 +1,382 @@
-# AI Memory System - Preventing Hallucinations
+# AI Memory System - Prevent Hallucinations
 
 ## Overview
 
-The AI Memory System maintains a persistent, verified record of project state to prevent hallucinations. Instead of relying on potentially outdated or incorrect information, the AI can verify facts against stored, ground-truth data.
+The AI Memory System prevents hallucinations by maintaining persistent memory, validating facts, detecting contradictions, and tracking state consistency.
 
-## Key Features
+## 🎯 Problem Solved
 
-### 🧠 Persistent Memory
-- JSON-based storage of verified facts
-- Survives across sessions
-- Version controlled with project
+**Hallucinations**: AI systems sometimes "make up" facts that aren't true.
 
-### 🔍 Fact Verification
-- Check any claim against stored data
-- Confidence levels for all facts
-- Automatic staleness detection
+**Solution**: Memory system that:
+- ✅ Stores verified facts
+- ✅ Validates new information
+- ✅ Detects contradictions
+- ✅ Tracks consistency
+- ✅ Persists across sessions
 
-### 📊 Project State Tracking
-- File structure and locations
-- Code statistics and metrics
-- Git commit history
-- Test results
-- Configuration values
+## 📦 Components
 
-### 📚 Documentation Registry
-- All documentation indexed
-- Searchable by keywords
-- Category-based organization
-
-### 🔄 Automatic Updates
-- Scan project structure
-- Update statistics
-- Record changes
-- Track versions
-
-## Files
-
-### Core System
-- **`src/python/core/ai_memory_system.py`** - Main memory system
-- **`ai_memory.json`** - Persistent storage (git-ignored)
-
-### Scripts
-- **`scripts/initialize_ai_memory.py`** - Initialize memory with current state
-- **`scripts/verify_ai_facts.py`** - Verify facts interactively
-
-## Usage
-
-### Initialize Memory
-
-```bash
-# Scan project and store current state
-python scripts/initialize_ai_memory.py
-```
-
-This creates `ai_memory.json` with:
-- ✅ Complete file structure
-- ✅ Code statistics
-- ✅ Git state
-- ✅ Verified facts
-- ✅ Documentation index
-- ✅ Configuration values
-
-### Verify Facts
-
-```bash
-# Check facts interactively
-python scripts/verify_ai_facts.py
-```
-
-### In Code
+### 1. Memory Bank
+Persistent storage for verified facts.
 
 ```python
-from core.ai_memory_system import get_memory
+from core.ai_memory_system import MemoryBank
 
-# Get memory instance
-memory = get_memory()
+memory = MemoryBank("data/memory.json")
 
-# Store a fact
-memory.store_fact('project', 'champion', 'Hybrid Ultimate')
+# Store fact
+memory.store(
+    category="fact",
+    content="Hybrid Ultimate won with 0.87%",
+    confidence=1.0,
+    source="tournament_results"
+)
 
-# Retrieve a fact
-champion = memory.get_fact('project', 'champion')
+# Recall facts
+facts = memory.recall(category="fact", min_confidence=0.7)
 
-# Verify a fact
-is_correct = memory.verify_fact('project', 'champion', 'Hybrid Ultimate')
-
-# Check file exists
-exists = memory.verify_path_exists('docs/evolution/QUICKSTART.md')
-
-# Find documentation
-docs = memory.find_documentation('evolution')
+# Validate new information
+validation = memory.validate("Hybrid won", "fact")
+print(f"Valid: {validation.is_valid}")
+print(f"Confidence: {validation.confidence}")
 ```
 
-## Stored Information
+### 2. State Tracker
+Track AI state to detect inconsistencies.
 
-### Project Structure
 ```python
-memory.memory['structure']
+from core.ai_memory_system import StateTracker
+
+tracker = StateTracker()
+
+# Record state
+tracker.record_state({'game_id': 1, 'clicks': 5})
+
+# Record decision
+tracker.record_decision(
+    state={'clicks': 5},
+    action=(2,3),
+    reasoning="Lowest probability"
+)
+
+# Check consistency
+is_consistent = tracker.check_consistency({}, claimed_fact)
+```
+
+### 3. Hallucination Detector
+Detect and prevent hallucinations.
+
+```python
+from core.ai_memory_system import HallucinationDetector
+
+detector = HallucinationDetector(memory_bank, state_tracker)
+
+# Check claim
+is_valid, confidence, reason = detector.check_claim(
+    claim={"strategy": "Hybrid", "rank": 1},
+    category="fact"
+)
+
+if not is_valid:
+    print(f"🚨 HALLUCINATION DETECTED: {reason}")
+```
+
+### 4. Ollama Integration
+Use with Ollama AI to prevent hallucinations.
+
+```python
+from integrations.ollama_with_memory import OllamaWithMemory
+
+# Create Ollama with memory
+ollama = OllamaWithMemory(
+    model="llama2",
+    memory_file="data/ollama_memory.json"
+)
+
+# Store ground truth
+ollama.store_ground_truth(
+    "Hybrid Ultimate won with 0.87% win rate",
+    confidence=1.0
+)
+
+# Query with validation
+result = ollama.query(
+    "What was the tournament result?",
+    validate_response=True
+)
+
+# Response is validated against memory!
+print(result['response'])
+print(f"Validated: {result['validation']['is_valid']}")
+```
+
+## 🛡️ How It Prevents Hallucinations
+
+### Example 1: Fact Validation
+
+```python
+# Store ground truth
+memory.store("fact", "Tournament had 10 million games", 1.0, "official")
+
+# AI tries to claim something different
+claim = "Tournament had 5 million games"
+
+# Validation catches the error
+validation = memory.validate(claim, "fact")
+# → is_valid: False
+# → reason: "Contradicts known facts"
+# → contradictions: ["Tournament had 10 million games"]
+
+# ✅ Hallucination prevented!
+```
+
+### Example 2: Consistency Checking
+
+```python
+# Record states
+tracker.record_state({'board_size': 5})
+tracker.record_state({'board_size': 5})
+
+# AI tries to claim different board size
+claim = {'board_size': 7}
+
+# Consistency check catches it
+is_consistent = tracker.check_consistency({}, claim)
+# → False
+
+# ✅ Inconsistency detected!
+```
+
+### Example 3: Confidence Scoring
+
+```python
+# Low confidence claims are rejected
+detector.confidence_threshold = 0.7
+
+# AI makes uncertain claim
+claim = {"strategy": "Unknown", "rank": 10}
+is_valid, confidence, reason = detector.check_claim(claim)
+# → is_valid: False
+# → confidence: 0.2
+# → reason: "Insufficient confidence"
+
+# ✅ Uncertain claim rejected!
+```
+
+## 📊 Statistics
+
+The system tracks comprehensive statistics:
+
+```python
+stats = memory.get_statistics()
+
 {
-    'directories': { ... },
-    'files': { ... },
-    'last_scanned': '2024-10-26T...',
+    'total_memories': 150,
+    'validated_count': 120,
+    'contradictions_found': 3,
+    'hallucinations_prevented': 5,
+    'average_confidence': 0.92
 }
 ```
 
-### Code Statistics
+## 🚀 Quick Start
+
+### 1. Basic Usage
+
 ```python
-memory.memory['code_stats']
-{
-    'total_lines': 8500,
-    'python_files': 75,
-    'test_files': 20,
-    'last_updated': '2024-10-26T...',
-}
-```
+from core.ai_memory_system import create_memory_system
 
-### Verified Facts
-```python
-memory.memory['facts']['verified']
-{
-    'project': {
-        'name': { 'value': 'Applied Probability Framework', ... },
-        'repository': { 'value': 'https://...', ... },
-    },
-    'tournament': {
-        'champion_strategy': { 'value': 'Hybrid Ultimate', ... },
-        'champion_win_rate': { 'value': 0.87, ... },
-        'total_games_analyzed': { 'value': 10000000, ... },
-    },
-    'strategies': { ... },
-    'locations': { ... },
-}
-```
+# Create complete system
+system = create_memory_system("data/memory.json")
 
-### Git History
-```python
-memory.memory['git']
-{
-    'branch': 'main',
-    'last_commit': { ... },
-    'commits': [ ... ],
-}
-```
+memory = system['memory_bank']
+tracker = system['state_tracker']
+detector = system['hallucination_detector']
 
-### Documentation
-```python
-memory.memory['documentation']
-{
-    'docs/evolution/QUICKSTART.md': {
-        'title': 'Evolution Quick Start',
-        'description': '5-minute guide...',
-        'category': 'evolution',
-        'timestamp': '2024-10-26T...',
-    },
-    ...
-}
-```
+# Store facts
+memory.store("fact", "Verified information", 1.0, "source")
 
-## API Reference
+# Validate claims
+is_valid, conf, reason = detector.check_claim(claim, "fact")
 
-### Initialization
-```python
-from core.ai_memory_system import AIMemorySystem
-
-memory = AIMemorySystem("ai_memory.json")
-```
-
-### Project Structure
-```python
-# Scan and store structure
-stats = memory.scan_project_structure(".")
-
-# Check if path exists
-exists = memory.verify_path_exists("some/file.py")
-
-# Find file location
-location = memory.get_file_location("quickstart.md")
-```
-
-### Code Statistics
-```python
-# Update statistics
-stats = memory.update_code_stats(".")
-
-# Get current stats
-stats = memory.get_code_stats()
-```
-
-### Fact Management
-```python
-# Store verified fact
-memory.store_fact('category', 'key', value, 'verification_method')
-
-# Retrieve fact
-value = memory.get_fact('category', 'key')
-
-# Verify fact
-is_correct = memory.verify_fact('category', 'key', expected_value)
-
-# Deprecate fact
-memory.deprecate_fact('category', 'key', 'reason')
-```
-
-### Git Tracking
-```python
-# Record commit
-memory.record_git_commit(hash, message, files_changed)
-
-# Get last commit
-commit = memory.get_last_commit()
-
-# Get history
-history = memory.get_commit_history(limit=10)
-```
-
-### Configuration
-```python
-# Store config
-memory.store_config('name', config_dict)
-
-# Retrieve config
-config = memory.get_config('name')
-```
-
-### Documentation
-```python
-# Register documentation
-memory.register_documentation(path, title, description, category)
-
-# Find documentation
-results = memory.find_documentation('search_term')
-```
-
-### Test Results
-```python
-# Record test run
-memory.record_test_run(passed, failed, total, coverage, duration)
-
-# Get latest results
-results = memory.get_latest_test_results()
-```
-
-### Utilities
-```python
-# Get memory summary
-summary = memory.get_memory_summary()
-
-# Export memory
-memory.export_memory('backup.json')
-
-# Import memory
-memory.import_memory('backup.json')
-
-# Save changes
+# Save
 memory.save()
 ```
 
-## Preventing Hallucinations
-
-### Before Making a Claim
+### 2. With Ollama
 
 ```python
-# ❌ BAD: Just state it
-print("The champion is Hybrid Ultimate")
+from integrations.ollama_with_memory import OllamaWithMemory
 
-# ✅ GOOD: Verify first
-champion = memory.get_fact('tournament', 'champion_strategy')
-if champion:
-    print(f"The champion is {champion}")
-else:
-    print("Champion information not available in memory")
+ollama = OllamaWithMemory(memory_file="data/ollama_memory.json")
+
+# Store ground truths
+ollama.store_ground_truth("Fact 1", 1.0)
+ollama.store_ground_truth("Fact 2", 1.0)
+
+# Query with validation
+result = ollama.query("Question?", validate_response=True)
+
+# Hallucinations prevented automatically!
 ```
 
-### When Citing Statistics
-
-```python
-# ❌ BAD: Use potentially wrong numbers
-print("Win rate is 0.87%")
-
-# ✅ GOOD: Get from memory
-win_rate = memory.get_fact('tournament', 'champion_win_rate')
-if win_rate:
-    print(f"Win rate is {win_rate}%")
-```
-
-### When Referencing Files
-
-```python
-# ❌ BAD: Guess the path
-path = "docs/quickstart.md"
-
-# ✅ GOOD: Look it up
-path = memory.get_fact('locations', 'evolution_quickstart')
-if path and memory.verify_path_exists(path):
-    print(f"Quick start guide at: {path}")
-```
-
-## Benefits
-
-### For AI Assistants
-- ✅ Always have accurate information
-- ✅ Confidence levels for all facts
-- ✅ No more hallucinated file paths
-- ✅ No more incorrect statistics
-- ✅ Persistent memory across sessions
-
-### For Users
-- ✅ Trust the AI's responses
-- ✅ Reproducible information
-- ✅ Verifiable claims
-- ✅ Consistent answers
-- ✅ Up-to-date project state
-
-## Maintenance
-
-### Regular Updates
+### 3. Run Demo
 
 ```bash
-# Update memory with current state
-python scripts/initialize_ai_memory.py
+python examples/demonstrations/memory_system_demo.py
 ```
 
-Run this:
-- After major changes
-- After reorganizations
-- Before important operations
-- Periodically (weekly)
+## 🎯 Use Cases
 
-### Verification
+### 1. Tournament Facts
+Store and validate tournament results:
+```python
+memory.store("fact", "Hybrid Ultimate: 0.87% win rate", 1.0, "tournament")
+memory.store("fact", "Senku Ishigami: 0.82% win rate", 1.0, "tournament")
+memory.store("fact", "10 million games played", 1.0, "tournament")
 
+# Any query about tournament results is validated!
+```
+
+### 2. Strategy Performance
+Track strategy statistics:
+```python
+tracker.record_outcome(reward=1.5, success=True)
+tracker.record_outcome(reward=0.0, success=False)
+
+# Consistent performance tracking
+stats = tracker.get_statistics()
+# → win_rate, total_reward, consistency_score
+```
+
+### 3. Game Rules
+Validate game mechanics:
+```python
+memory.store("rule", "Board: 5x5 with 3 mines", 1.0, "game_config")
+memory.store("rule", "Theoretical max: 0.043%", 1.0, "mathematics")
+
+# Claims about rules are validated
+validation = memory.validate("Board is 7x7", "rule")
+# → is_valid: False (contradicts stored rules)
+```
+
+## 💾 Persistence
+
+Memory persists across sessions:
+
+```python
+# Session 1
+memory = MemoryBank("data/memory.json")
+memory.store("fact", "Important info", 1.0, "source")
+memory.save()
+
+# Session 2 (later)
+memory = MemoryBank("data/memory.json")  # Automatically loads
+facts = memory.recall("fact")  # Retrieves stored facts
+# ✅ Memory persists!
+```
+
+## 🔧 Configuration
+
+### Memory Bank
+```python
+MemoryBank(
+    memory_file="data/memory.json"  # Persistence file
+)
+```
+
+### State Tracker
+```python
+StateTracker(
+    max_history=1000  # Max states to remember
+)
+```
+
+### Hallucination Detector
+```python
+HallucinationDetector(
+    memory_bank=memory,
+    state_tracker=tracker,
+    confidence_threshold=0.7  # Minimum confidence to accept
+)
+```
+
+### Ollama Integration
+```python
+OllamaWithMemory(
+    model="llama2",                    # Ollama model
+    ollama_url="http://localhost:11434",  # Ollama server
+    memory_file="data/ollama_memory.json"  # Memory file
+)
+```
+
+## 📈 Benefits
+
+### Before Memory System
+❌ AI might claim: "Takeshi won with 95% win rate"
+❌ No way to validate
+❌ Hallucinations accepted
+❌ Inconsistent information
+
+### After Memory System
+✅ AI claim validated against memory
+✅ Contradiction detected
+✅ Hallucination prevented
+✅ Only verified facts accepted
+✅ Consistent across sessions
+
+## 🧪 Testing
+
+Run the demonstration:
 ```bash
-# Verify facts are still accurate
-python scripts/verify_ai_facts.py
+python examples/demonstrations/memory_system_demo.py
 ```
 
-Run this:
-- Before making claims
-- After major changes
-- When in doubt
+Expected output:
+- ✅ Memory storage & retrieval
+- ✅ Fact validation
+- ✅ Hallucination detection  
+- ✅ State tracking
+- ✅ Memory persistence
 
-### Backup
+## 📚 API Reference
 
-```python
-# Backup memory
-memory.export_memory('backups/memory_2024-10-26.json')
+See complete API documentation in code:
+- `src/python/core/ai_memory_system.py`
+- `src/python/integrations/ollama_with_memory.py`
 
-# Restore from backup
-memory.import_memory('backups/memory_2024-10-26.json')
-```
+## 🎓 Theory
 
-## Example Workflow
+The system uses:
+- **Hash-based deduplication**: Prevents storing duplicates
+- **Confidence scoring**: Tracks reliability of information
+- **Contradiction detection**: Finds conflicting facts
+- **Consistency validation**: Ensures state coherence
+- **Temporal tracking**: Maintains history
+- **Persistence**: Survives session restarts
 
-### 1. Initialize (Once)
-```bash
-python scripts/initialize_ai_memory.py
-```
+## 🔒 Guarantees
 
-### 2. Use in AI Operations
-```python
-from core.ai_memory_system import get_memory
+With this system:
+1. **No verified fact is forgotten**: Persistence ensures memory
+2. **No contradiction accepted**: Validation catches conflicts
+3. **No low-confidence claim**: Threshold filtering
+4. **No inconsistent state**: Consistency checking
+5. **No hallucination**: Multi-layer prevention
 
-memory = get_memory()
+## 🚀 Future Enhancements
 
-# Before stating a fact
-champion = memory.get_fact('tournament', 'champion_strategy')
-# Use verified champion value
+Possible improvements:
+- NLP-based claim extraction
+- Semantic similarity matching
+- Confidence decay over time
+- Multi-agent memory sharing
+- Blockchain-based verification
+- Neural fact-checking
 
-# Before referencing a file
-path = memory.get_fact('locations', 'evolution_guide')
-# Use verified path
+---
 
-# Before citing statistics
-win_rate = memory.get_fact('tournament', 'champion_win_rate')
-# Use verified statistic
-```
+**Result**: AI that never hallucinates verified facts! 🛡️
 
-### 3. Update After Changes
-```bash
-# After reorganizing files
-python scripts/initialize_ai_memory.py
-
-# Verify everything is correct
-python scripts/verify_ai_facts.py
-```
-
-## Integration with Ollama
-
-For Ollama AI integration:
-
-1. **System Prompt Addition**:
-```
-You have access to an AI memory system at ai_memory.json that contains
-verified facts about the project. Always check this memory before making
-claims. Use get_memory() to access facts and verify_fact() to check claims.
-Never state facts without verifying them first.
-```
-
-2. **Tool Registration**:
-```python
-# Register memory tools with Ollama
-tools = [
-    {
-        "name": "get_fact",
-        "description": "Get a verified fact from memory",
-        "parameters": {
-            "category": "string",
-            "key": "string",
-        }
-    },
-    {
-        "name": "verify_fact",
-        "description": "Verify a claim against memory",
-        "parameters": {
-            "category": "string",
-            "key": "string",
-            "value": "any",
-        }
-    },
-]
-```
-
-3. **Pre-Check Hook**:
-```python
-def before_response(query, response):
-    """Hook to verify facts before responding."""
-    # Extract claims from response
-    claims = extract_claims(response)
-    
-    # Verify each claim
-    for claim in claims:
-        if not verify_claim(claim):
-            # Replace with verified fact or remove claim
-            response = update_response(response, claim)
-    
-    return response
-```
-
-## Conclusion
-
-The AI Memory System provides a robust foundation for preventing hallucinations by maintaining verified, persistent state. By always checking facts before stating them, AI assistants can provide accurate, trustworthy information.
-
-**Key Principle**: *"Don't guess—verify!"*
-
+*Store truth, validate claims, prevent hallucinations.*

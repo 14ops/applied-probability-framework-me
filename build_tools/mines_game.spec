@@ -23,7 +23,21 @@ hidden_imports = [
     'tkinter',
     'tkinter.ttk',
     'tkinter.messagebox',
+    'tkinter.filedialog',
+    'tkinter.scrolledtext',
     'game_simulator',
+    'matrix_visualizer',
+    'register_plugins',
+    'adaptive_takeshi',
+    'core',
+    'core.base_estimator',
+    'core.base_simulator',
+    'core.base_strategy',
+    'core.config',
+    'core.plugin_system',
+    'core.evolution_matrix',
+    'core.adaptive_strategy',
+    'numpy',
 ]
 
 a = Analysis(

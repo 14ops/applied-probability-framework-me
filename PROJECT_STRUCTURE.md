@@ -13,7 +13,19 @@ applied-probability-framework/
 │   │   ├── base_simulator.py             # Simulator interface
 │   │   └── ...
 │   │
-│   ├── 📂 character_strategies/          # AI Strategies
+│   ├── 📂 strategies/                    # ⭐ NEW: Formal Strategy Plugins
+│   │   ├── base.py                       # StrategyBase interface (ABC)
+│   │   ├── takeshi.py                    # 🔥 Takeshi: Aggressive doubling
+│   │   ├── yuzu.py                       # 🎲 Yuzu: Controlled chaos (7 clicks)
+│   │   ├── aoi.py                        # 🤝 Aoi: Cooperative sync
+│   │   ├── kazuya.py                     # 🥋 Kazuya: Dagger strike
+│   │   └── lelouch.py                    # 👑 Lelouch: Streak-based
+│   │
+│   ├── 📂 game/                          # ⭐ NEW: Game Mathematics
+│   │   ├── math.py                       # Win probability, payouts, EV
+│   │   └── __init__.py                   # Math module exports
+│   │
+│   ├── 📂 character_strategies/          # Legacy AI Strategies
 │   │   ├── hybrid_strategy.py            # 🏆 Champion (with AI evolution)
 │   │   ├── senku_ishigami.py             # Analytical strategy
 │   │   ├── lelouch_vi_britannia.py       # Strategic planning
@@ -82,6 +94,80 @@ applied-probability-framework/
 ├── LICENSE                               # MIT License
 └── ...
 ```
+
+---
+
+## 🔌 Strategy Plugin Interface
+
+### StrategyBase Class
+
+All character strategies inherit from `StrategyBase` (defined in `src/python/strategies/base.py`):
+
+```python
+from strategies.base import StrategyBase
+
+class MyStrategy(StrategyBase):
+    """Custom strategy implementation."""
+    
+    def decide(self, state: dict) -> dict:
+        """
+        Make betting and action decisions.
+        
+        Args:
+            state: Game state with 'revealed', 'board', 'clicks_made', etc.
+            
+        Returns:
+            Decision: {"action": "bet"|"click"|"cashout", "bet": float, "position": tuple}
+        """
+        pass
+    
+    def on_result(self, result: dict) -> None:
+        """
+        Process game result for learning/adaptation.
+        
+        Args:
+            result: {"win": bool, "payout": float, "profit": float, ...}
+        """
+        pass
+```
+
+### Required Methods
+
+1. **`decide(state)`**: Make decisions
+   - Returns action dict: `{"action": "bet", "bet": 10.0}` or `{"action": "click", "position": (2, 3)}`
+   - State contains: `revealed`, `board`, `board_size`, `mine_count`, `clicks_made`, `current_multiplier`
+
+2. **`on_result(result)`**: Process outcomes
+   - Called after each game completes
+   - Result contains: `win`, `payout`, `clicks`, `profit`, `final_bankroll`, `bet_amount`
+
+### Optional Methods
+
+- **`reset()`**: Reset state between sessions
+- **`serialize()`** / **`deserialize()`**: Save/load strategy state
+- **`get_statistics()`**: Return performance metrics
+
+### Using Strategies
+
+```python
+# Import strategy
+from strategies import TakeshiStrategy
+
+# Create instance
+strategy = TakeshiStrategy(config={
+    'base_bet': 10.0,
+    'target_clicks': 8,
+    'initial_bankroll': 1000.0
+})
+
+# Use in simulation
+state = {...}  # Game state
+decision = strategy.decide(state)  # Get action
+result = {...}  # Game result
+strategy.on_result(result)  # Learn from outcome
+```
+
+See [`src/python/strategies/base.py`](src/python/strategies/base.py) for complete interface documentation.
 
 ---
 

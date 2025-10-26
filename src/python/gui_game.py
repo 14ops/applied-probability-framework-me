@@ -4,13 +4,16 @@ Styled like a modern casino game with interactive gameplay.
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import random
 import time
 from collections import deque
+from pathlib import Path
 from game_simulator import GameSimulator
 from core.plugin_system import get_registry
+from matrix_visualizer import MatrixVisualizationPanel
 import register_plugins  # Register all strategies
+import adaptive_takeshi  # Register adaptive Q-learning strategies
 
 
 class MinesGameGUI:
@@ -62,6 +65,10 @@ class MinesGameGUI:
         
         # Get registry for strategies
         self.registry = get_registry()
+        
+        # Matrix visualization panel
+        self.matrix_panel = None
+        self.matrix_panel_visible = False
         
         # Create UI
         self.create_widgets()
@@ -344,6 +351,8 @@ class MinesGameGUI:
 
         # Character descriptions
         self.character_descriptions = {
+            'adaptive_takeshi': '⚡ Q-LEARNING: Aggressive berserker that learns optimal moves from experience. Matrices evolve in real-time!',
+            'adaptive_senku': '⚡ Q-LEARNING: Analytical scientist with adaptive learning. Builds knowledge through experimentation!',
             'takeshi': '🔥 High-risk, high-reward aggressive play. Escalates betting when advantage is high.',
             'lelouch': '🧠 Strategic mastermind. Long-term planning with psychological advantage tactics.',
             'kazuya': '🛡️ Conservative survivor. Extreme risk aversion with capital preservation focus.',
@@ -357,6 +366,8 @@ class MinesGameGUI:
 
         # Load strategies with display names (avoiding duplicates)
         self.strategy_map = {
+            'adaptive_takeshi': '⚡ Takeshi (Q-Learning)',
+            'adaptive_senku': '⚡ Senku (Q-Learning)',
             'takeshi': 'Takeshi Kovacs - Aggressive Berserker',
             'lelouch': 'Lelouch vi Britannia - Strategic Mastermind',
             'kazuya': 'Kazuya Kinoshita - Conservative Survivor',
@@ -372,7 +383,7 @@ class MinesGameGUI:
         # Remove duplicates by keeping only preferred keys
         seen_display = set()
         unique_strategies = []
-        preferred_keys = ['takeshi', 'lelouch', 'kazuya', 'senku', 'okabe', 'hybrid', 'conservative', 'random', 'aggressive']
+        preferred_keys = ['adaptive_takeshi', 'adaptive_senku', 'takeshi', 'lelouch', 'kazuya', 'senku', 'okabe', 'hybrid', 'conservative', 'random', 'aggressive']
         
         for key in preferred_keys:
             if key in strategies:
@@ -568,6 +579,34 @@ class MinesGameGUI:
                                          font=("Arial", 10, "bold"), relief=tk.FLAT,
                                          padx=10, pady=8, cursor="hand2", state=tk.DISABLED)
         self.auto_play_button.pack(fill=tk.X, pady=2)
+        
+        # Matrix Visualization button
+        self.matrix_viz_button = tk.Button(ai_button_frame, text="📊 Show Learning Matrices",
+                                          command=self.toggle_matrix_panel,
+                                          bg="#00bcd4", fg=self.TEXT_COLOR,
+                                          font=("Arial", 10, "bold"), relief=tk.FLAT,
+                                          padx=10, pady=8, cursor="hand2")
+        self.matrix_viz_button.pack(fill=tk.X, pady=2)
+        
+        # Learning Progress Control
+        progress_frame = tk.LabelFrame(left_panel, text="Learning Progress", 
+                                       bg=self.PANEL_COLOR, fg=self.TEXT_COLOR,
+                                       font=("Arial", 10, "bold"))
+        progress_frame.pack(pady=10, padx=20, fill=tk.X)
+        
+        save_progress_button = tk.Button(progress_frame, text="💾 Save Learning Progress",
+                                        command=self.save_learning_progress,
+                                        bg="#4caf50", fg="white",
+                                        font=("Arial", 9, "bold"), relief=tk.FLAT,
+                                        padx=8, pady=6, cursor="hand2")
+        save_progress_button.pack(fill=tk.X, pady=3, padx=5)
+        
+        load_progress_button = tk.Button(progress_frame, text="📂 Load Learning Progress",
+                                        command=self.load_learning_progress,
+                                        bg="#2196f3", fg="white",
+                                        font=("Arial", 9, "bold"), relief=tk.FLAT,
+                                        padx=8, pady=6, cursor="hand2")
+        load_progress_button.pack(fill=tk.X, pady=3, padx=5)
 
         # Right panel - game grid
         self.grid_container = tk.Frame(main_frame, bg=self.BG_COLOR)
@@ -690,7 +729,13 @@ class MinesGameGUI:
             strategy_key = display_name  # Fallback
         
         try:
-            self.current_strategy = self.registry.create_strategy(strategy_key)
+            # Reuse existing strategy if it's the same one (preserves learning)
+            if self.current_strategy and getattr(self.current_strategy, 'name', None) == display_name:
+                # Reset episode-specific state but keep learned Q-values
+                self.current_strategy.reset()
+            else:
+                # Create new strategy
+                self.current_strategy = self.registry.create_strategy(strategy_key)
             # Apply learning to the strategy
             self.apply_learning_to_strategy(self.current_strategy, strategy_key)
             # Apply user tuning
@@ -776,6 +821,16 @@ class MinesGameGUI:
         if not self.game_active:
             return
         
+        # Get current state before action (for Q-learning)
+        if self.current_strategy and hasattr(self.current_strategy, 'update'):
+            state_before = {
+                'revealed': self.game.revealed.tolist() if hasattr(self.game.revealed, 'tolist') else self.game.revealed,
+                'board': self.game.board.tolist() if hasattr(self.game.board, 'tolist') else self.game.board,
+                'board_size': self.game.board_size,
+                'mine_count': self.game.mine_count,
+                'clicks_made': self.clicks_made
+            }
+        
         # Click the cell
         success, result = self.game.click_cell(row, col)
         
@@ -783,10 +838,25 @@ class MinesGameGUI:
             return  # Already clicked
         
         self.clicks_made += 1
+        action = (row, col)
         
         if result == "Mine":
             # Hit a mine - game over!
             self.reveal_mine(row, col)
+            
+            # Update strategy with negative reward (for Q-learning)
+            if self.current_strategy and hasattr(self.current_strategy, 'update'):
+                state_after = {
+                    'revealed': self.game.revealed.tolist() if hasattr(self.game.revealed, 'tolist') else self.game.revealed,
+                    'board': self.game.board.tolist() if hasattr(self.game.board, 'tolist') else self.game.board,
+                    'board_size': self.game.board_size,
+                    'mine_count': self.game.mine_count,
+                    'clicks_made': self.clicks_made
+                }
+                # Negative reward for hitting a mine
+                reward = -1.0
+                self.current_strategy.update(state_before, action, reward, state_after, done=True)
+            
             self.game_over(won=False)
         else:
             # Safe cell!
@@ -800,8 +870,34 @@ class MinesGameGUI:
             
             # Check if won (all safe cells revealed)
             if self.clicks_made >= self.game.max_clicks:
+                # Update strategy with big positive reward (for Q-learning)
+                if self.current_strategy and hasattr(self.current_strategy, 'update'):
+                    state_after = {
+                        'revealed': self.game.revealed.tolist() if hasattr(self.game.revealed, 'tolist') else self.game.revealed,
+                        'board': self.game.board.tolist() if hasattr(self.game.board, 'tolist') else self.game.board,
+                        'board_size': self.game.board_size,
+                        'mine_count': self.game.mine_count,
+                        'clicks_made': self.clicks_made
+                    }
+                    # Big positive reward for winning
+                    reward = float(self.current_multiplier)
+                    self.current_strategy.update(state_before, action, reward, state_after, done=True)
+                
                 self.game_over(won=True)
             else:
+                # Update strategy with small positive reward for safe click (for Q-learning)
+                if self.current_strategy and hasattr(self.current_strategy, 'update'):
+                    state_after = {
+                        'revealed': self.game.revealed.tolist() if hasattr(self.game.revealed, 'tolist') else self.game.revealed,
+                        'board': self.game.board.tolist() if hasattr(self.game.board, 'tolist') else self.game.board,
+                        'board_size': self.game.board_size,
+                        'mine_count': self.game.mine_count,
+                        'clicks_made': self.clicks_made
+                    }
+                    # Small positive reward for safe click
+                    reward = 0.1
+                    self.current_strategy.update(state_before, action, reward, state_after, done=False)
+                
                 # Update stats
                 self.clicks_label.config(text=str(self.clicks_made))
                 self.multiplier_label.config(text=f"{self.current_multiplier:.2f}x")
@@ -1406,6 +1502,9 @@ class MinesGameGUI:
         """AI clicks a cell."""
         self.click_cell(row, col)
         
+        # Update matrix panel if visible
+        self.update_matrix_panel_if_visible()
+        
         # Continue playing if still active
         if self.ai_playing and self.game_active:
             self.root.after(600, self.ai_make_move)
@@ -1579,6 +1678,181 @@ class MinesGameGUI:
             strategy.aggression_factor = 1.0 + (aggr - 0.3) * (1.0 / 0.4)
         if hasattr(strategy, 'max_tolerable_risk'):
             strategy.max_tolerable_risk = maxrisk
+    
+    def toggle_matrix_panel(self):
+        """Toggle matrix visualization panel."""
+        if self.matrix_panel_visible:
+            # Hide panel
+            if self.matrix_panel:
+                self.matrix_panel.pack_forget()
+            self.matrix_panel_visible = False
+            self.matrix_viz_button.config(text="📊 Show Learning Matrices")
+        else:
+            # Show panel
+            if not self.matrix_panel:
+                # Create matrix panel in a new top-level window
+                matrix_window = tk.Toplevel(self.root)
+                matrix_window.title("Learning Matrices Visualization")
+                matrix_window.geometry("900x700")
+                matrix_window.configure(bg=self.BG_COLOR)
+                
+                # Create panel
+                self.matrix_panel = MatrixVisualizationPanel(
+                    matrix_window, 
+                    bg_color=self.BG_COLOR,
+                    panel_color=self.PANEL_COLOR
+                )
+                self.matrix_panel.pack(fill=tk.BOTH, expand=True)
+                
+                # Set current strategy if available
+                if self.current_strategy:
+                    self.matrix_panel.set_strategy(self.current_strategy)
+                    # Enable auto-refresh
+                    self.matrix_panel.auto_refresh_var.set(True)
+                    self.matrix_panel.toggle_auto_refresh()
+                
+                # Handle window close
+                def on_close():
+                    self.matrix_panel_visible = False
+                    self.matrix_viz_button.config(text="📊 Show Learning Matrices")
+                    matrix_window.destroy()
+                    self.matrix_panel = None
+                
+                matrix_window.protocol("WM_DELETE_WINDOW", on_close)
+            else:
+                self.matrix_panel.pack(fill=tk.BOTH, expand=True)
+                
+            self.matrix_panel_visible = True
+            self.matrix_viz_button.config(text="📊 Hide Learning Matrices")
+    
+    def update_matrix_panel_if_visible(self):
+        """Update matrix panel if it's visible."""
+        if self.matrix_panel_visible and self.matrix_panel and self.current_strategy:
+            # Set strategy (in case it changed)
+            self.matrix_panel.set_strategy(self.current_strategy)
+            # Manual refresh (auto-refresh will handle subsequent updates)
+            if not self.matrix_panel.auto_refresh:
+                self.matrix_panel.refresh_all()
+    
+    def save_learning_progress(self):
+        """Save the current strategy's learning progress to disk."""
+        if not self.current_strategy:
+            messagebox.showwarning("No Strategy", "No strategy is currently loaded.\nStart a game with an AI strategy first.")
+            return
+        
+        # Check if strategy supports learning
+        if not hasattr(self.current_strategy, 'save_learning_state'):
+            messagebox.showinfo("Not Supported", 
+                              f"Strategy '{self.current_strategy.name}' does not support learning progress save.\n"
+                              "Only adaptive learning strategies support this feature.")
+            return
+        
+        # Get strategy name for default filename
+        display_name = self.strategy_var.get()
+        strategy_key = None
+        for key, val in self.strategy_map.items():
+            if val == display_name:
+                strategy_key = key
+                break
+        
+        if not strategy_key:
+            strategy_key = display_name
+        
+        # Ask user where to save
+        default_dir = Path("data/learning_progress") / strategy_key
+        default_dir.mkdir(parents=True, exist_ok=True)
+        
+        save_dir = filedialog.askdirectory(
+            title="Select Directory to Save Learning Progress",
+            initialdir=str(default_dir.parent)
+        )
+        
+        if save_dir:
+            try:
+                # Save to selected directory
+                save_path = Path(save_dir) / strategy_key
+                self.current_strategy.save_learning_state(str(save_path))
+                
+                messagebox.showinfo("Success", 
+                                  f"Learning progress saved successfully!\n\n"
+                                  f"Location: {save_path}\n\n"
+                                  f"Files saved:\n"
+                                  f"- Q-Learning matrix\n"
+                                  f"- Experience Replay buffer\n"
+                                  f"- Evolution parameters\n"
+                                  f"- Strategy configuration")
+            except Exception as e:
+                messagebox.showerror("Save Error", 
+                                   f"Failed to save learning progress:\n{str(e)}")
+    
+    def load_learning_progress(self):
+        """Load learning progress from disk into the current strategy."""
+        # Get strategy selection
+        display_name = self.strategy_var.get()
+        strategy_key = None
+        for key, val in self.strategy_map.items():
+            if val == display_name:
+                strategy_key = key
+                break
+        
+        if not strategy_key:
+            strategy_key = display_name
+        
+        # Ask user which directory to load from
+        default_dir = Path("data/learning_progress")
+        default_dir.mkdir(parents=True, exist_ok=True)
+        
+        load_dir = filedialog.askdirectory(
+            title="Select Directory Containing Learning Progress",
+            initialdir=str(default_dir)
+        )
+        
+        if load_dir:
+            try:
+                # Check if directory contains learning data
+                load_path = Path(load_dir)
+                if not (load_path / "q_matrix.json").exists() and \
+                   not (load_path / "evolution_matrix.json").exists() and \
+                   not (load_path / "replay_buffer.json").exists():
+                    # Maybe it's the parent directory
+                    load_path = load_path / strategy_key
+                    if not (load_path / "q_matrix.json").exists() and \
+                       not (load_path / "evolution_matrix.json").exists() and \
+                       not (load_path / "replay_buffer.json").exists():
+                        messagebox.showerror("Invalid Directory",
+                                           "Selected directory does not contain learning progress data.\n"
+                                           "Expected files: q_matrix.json, replay_buffer.json, or evolution_matrix.json")
+                        return
+                
+                # Create strategy if not exists
+                if not self.current_strategy:
+                    try:
+                        self.current_strategy = self.registry.create_strategy(strategy_key)
+                    except Exception as e:
+                        messagebox.showerror("Strategy Error", 
+                                           f"Failed to create strategy:\n{str(e)}")
+                        return
+                
+                # Check if strategy supports learning
+                if not hasattr(self.current_strategy, 'load_learning_state'):
+                    messagebox.showinfo("Not Supported",
+                                      f"Strategy '{self.current_strategy.name}' does not support learning progress load.\n"
+                                      "Only adaptive learning strategies support this feature.")
+                    return
+                
+                # Load the learning state
+                self.current_strategy.load_learning_state(str(load_path))
+                
+                # Update matrix panel if visible
+                self.update_matrix_panel_if_visible()
+                
+                messagebox.showinfo("Success",
+                                  f"Learning progress loaded successfully!\n\n"
+                                  f"Location: {load_path}\n\n"
+                                  f"The AI will continue learning from this saved state.")
+            except Exception as e:
+                messagebox.showerror("Load Error",
+                                   f"Failed to load learning progress:\n{str(e)}")
 
 
 def main():
