@@ -1,0 +1,269 @@
+🎯 Major Release: Complete Repository Restructuring & Character Strategies
+
+## 🌟 Overview
+
+Complete overhaul of the Applied Probability Framework with formal strategy
+system, mathematical foundations, and 5 unique character strategies for the
+Mines game. This release adds 4,000+ lines of production code, 90+ unit tests,
+and comprehensive documentation.
+
+## ✨ New Features
+
+### 📐 Mathematical Foundation Module
+- ✅ Exact win probability calculations using combinatorics
+- ✅ Theoretical and observed payout formulas
+- ✅ Expected value computations for any bet size
+- ✅ Kelly criterion for optimal bet sizing
+- ✅ Complete payout table (1-23 clicks)
+- ✅ Comprehensive docstrings and examples
+
+### 🔌 Formal Strategy Plugin System
+- ✅ `StrategyBase` abstract base class with standard interface
+- ✅ Required methods: `decide()`, `on_result()`
+- ✅ Optional methods: `reset()`, `serialize()`, `deserialize()`
+- ✅ Full state management and persistence
+- ✅ Performance tracking and statistics
+
+### 🎮 Five Character Strategies
+
+#### 🔥 Takeshi Kovacs - Aggressive Berserker
+- Martingale doubling (max 2×) with tranquility mode
+- Targets 8 clicks (45.33% win, 2.12× payout)
+- Anger management mechanics
+- 10+ dedicated unit tests
+
+#### 🎲 Yuzu - Controlled Chaos
+- ALWAYS exactly 7 clicks (51% win, 1.95× payout)
+- Variable bet sizing with chaos factor
+- Momentum-based betting
+- 8+ unit tests
+
+#### 🤝 Aoi - Cooperative Sync
+- Syncs with best performer after 3 losses
+- Adaptive target selection (6-7 clicks)
+- Team learning mechanics
+- 7+ unit tests
+
+#### 🥋 Kazuya - Disciplined Fighter
+- Conservative play with flat betting
+- "Dagger Strike" every 6 rounds (5→10 clicks)
+- Methodical position selection
+- 8+ unit tests
+
+#### 👑 Lelouch vi Britannia - Strategic Mastermind
+- Streak-based bet escalation
+- Safety mode after big losses
+- Confidence-based target selection (6-8 clicks)
+- 10+ unit tests
+
+### 🧪 Testing & Quality Assurance
+- ✅ 50+ strategy unit tests (`test_strategies_characters.py`)
+- ✅ 40+ math unit tests (`test_game_math.py`)
+- ✅ Interface compliance verification
+- ✅ Serialization/deserialization tests
+- ✅ Edge case and error handling tests
+
+### 🏆 Tournament System
+- ✅ Full tournament runner for all 5 characters
+- ✅ Command-line interface with arguments
+- ✅ Detailed statistics output
+- ✅ JSON result export for analysis
+- ✅ Reproducible with seeds
+
+### 🎨 Enhanced GUI Features
+- ✅ Q-Learning matrix visualization panel
+- ✅ Real-time learning progress display
+- ✅ Save/load learning state functionality
+- ✅ Adaptive strategy integration
+- ✅ Strategy.update() calls for Q-learning
+
+## 📚 Documentation
+
+### Main Documentation Updates
+- ✅ **README.md**: Added complete Mines Game Model section
+  - Win probability formula (mathematical notation)
+  - Payout table with 15 click counts
+  - Character strategy descriptions with code examples
+  - Quick start commands
+
+- ✅ **PROJECT_STRUCTURE.md**: Added strategies/ documentation
+  - Plugin interface specification
+  - Required and optional methods
+  - Usage examples
+
+- ✅ **QUICKSTART.md**: Added Mines examples
+  - Character strategy quick tests
+  - Custom strategy template
+  - Mathematical analysis snippets
+
+### New Documentation
+- ✅ **docs/math_appendix.md**: Complete probability theory
+  - Combinatorial foundations
+  - Two proof methods (combinatorial + multiplicative)
+  - Expected value derivations
+  - Kelly criterion application
+  - Full numerical tables
+
+- ✅ **results/README_results.md**: Results documentation
+  - Standard JSON schema for results
+  - Regeneration commands for reproducibility
+  - Validation scripts
+  - CI integration guidelines
+
+- ✅ **RESTRUCTURING_COMPLETE.md**: Implementation summary
+  - Complete task checklist
+  - Verification results
+  - Quick start guide
+  - File inventory
+
+## 🗂️ New Files Created (15+)
+
+### Core Modules
+- `src/python/game/math.py` - Mathematical foundations
+- `src/python/game/__init__.py` - Math module exports
+- `src/python/strategies/base.py` - Strategy interface
+- `src/python/strategies/__init__.py` - Strategy exports
+
+### Character Strategies
+- `src/python/strategies/takeshi.py` - Takeshi implementation
+- `src/python/strategies/yuzu.py` - Yuzu implementation
+- `src/python/strategies/aoi.py` - Aoi implementation
+- `src/python/strategies/kazuya.py` - Kazuya implementation
+- `src/python/strategies/lelouch.py` - Lelouch implementation
+
+### Testing
+- `src/python/tests/test_strategies_characters.py` - Strategy tests
+- `src/python/tests/test_game_math.py` - Math tests
+
+### Tools & Documentation
+- `examples/tournaments/character_tournament.py` - Tournament runner
+- `docs/math_appendix.md` - Mathematical documentation
+- `results/README_results.md` - Results guide
+- `RESTRUCTURING_COMPLETE.md` - Summary document
+
+### GUI & Learning
+- `src/python/matrix_visualizer.py` - Matrix visualization panel
+- `src/python/adaptive_takeshi.py` - Adaptive Q-learning strategies
+- `build_tools/build_mines_game.py` - Build script
+- `ENABLE_Q_LEARNING.md` - Q-learning guide
+
+## 📊 Modified Files
+
+### Core Updates
+- `src/python/core/evolution_matrix.py` - Added save/load for replay buffer
+- `src/python/core/adaptive_strategy.py` - Enhanced persistence
+- `src/python/gui_game.py` - Integrated matrix visualization, Q-learning
+- `strategy_stats.json` - Updated with comprehensive format
+
+### Build System
+- `build_tools/mines_game.spec` - Added new module imports
+- `build_tools/README.md` - Updated with new features
+
+### Documentation
+- `README.md` - Added Mines Game Model section
+- `PROJECT_STRUCTURE.md` - Added strategies/ documentation
+- `QUICKSTART.md` - Added Mines examples
+
+## 🎯 Impact
+
+### Code Quality
+- **+4,000** lines of production code
+- **+90** unit tests (all passing ✅)
+- **100%** interface compliance
+- **Comprehensive** docstring coverage
+
+### Reproducibility
+- ✅ Exact mathematical formulas
+- ✅ Deterministic seeds
+- ✅ Regeneration commands documented
+- ✅ Test coverage for all core functions
+
+### User Experience
+- ✅ Clear strategy plugin interface
+- ✅ Easy-to-run tournament system
+- ✅ Comprehensive documentation
+- ✅ Interactive GUI with visualization
+
+## 🚀 Quick Start
+
+```bash
+# Test math module
+python -c "from game.math import win_probability; print(f'8 clicks: {win_probability(8):.2%}')"
+
+# Run character tournament
+python examples/tournaments/character_tournament.py --num-games 50000
+
+# Run tests
+cd src/python && pytest tests/ -v
+
+# Play interactively
+python src/python/gui_game.py
+```
+
+## 🔬 Technical Details
+
+### Mathematical Model
+- **Board**: 5×5 (25 tiles)
+- **Mines**: 2
+- **Formula**: P(win k clicks) = C(23,k) / C(25,k)
+- **+EV Zone**: 7-15 clicks with observed payouts
+
+### Strategy Architecture
+- Abstract base class with template method pattern
+- State serialization/deserialization
+- Performance tracking and statistics
+- Plugin registration system
+
+### Testing Strategy
+- Unit tests for each character's unique mechanics
+- Mathematical verification against known values
+- Interface compliance checks
+- Edge case and error handling
+
+## 📈 Performance
+
+### Character Win Rates (Theoretical)
+- Takeshi (8 clicks): 45.33% win probability
+- Yuzu (7 clicks): 51.00% win probability
+- Aoi (6-7 clicks): 51-57% adaptive
+- Kazuya (5 clicks): 63.33% conservative
+- Lelouch (6-8 clicks): 45-57% strategic
+
+### Expected Values (with observed payouts)
+- 5 clicks: -$0.03 EV per $10 bet
+- 7 clicks: +$0.05 EV per $10 bet ✅
+- 8 clicks: +$0.41 EV per $10 bet ✅
+- 10 clicks: +$0.41 EV per $10 bet ✅
+
+## 🙏 Credits
+
+This implementation follows industry best practices:
+- Clean architecture principles
+- SOLID design patterns
+- Comprehensive testing
+- Full documentation
+- Reproducible science
+
+## 📝 Notes
+
+- All tests passing ✅
+- Documentation complete ✅
+- Code formatted and linted ✅
+- Ready for production use ✅
+
+---
+
+**Breaking Changes**: None (all changes are additive)
+
+**Migration Guide**: Not required (backward compatible)
+
+**Dependencies**: No new dependencies added
+
+**Python Version**: 3.8+ (unchanged)
+
+---
+
+🎉 This release represents a major enhancement to the Applied Probability
+Framework, adding formal structure, comprehensive testing, and extensive
+documentation while maintaining backward compatibility.
+
