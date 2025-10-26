@@ -141,6 +141,10 @@ Thumbs.db
 logs/
 *.log
 sessions.jsonl
+
+# AI Memory System (generated)
+ai_memory.json
+ai_memory_*.json
 src/python/logs/*.json
 src/python/logs/*.jsonl
 
