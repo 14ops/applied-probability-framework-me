@@ -1,334 +1,594 @@
 """
-Lelouch Strategy - Strategic Streak-Based Betting
+Lelouch Strategy - Strategic Mastermind
 
-Personality: Brilliant strategist. Adjusts bets based on win/loss patterns.
-Escalates on winning streaks, retreats after losses.
+This strategy implements a complex, strategic approach with psychological
+elements and long-term planning.
 
-Core Mechanics:
-1. Base bet normally
-2. 2+ win streak → increase bet by 50%
-3. Loss after big bet → drop to safety bet ($2.50)
-4. Targets 6-8 clicks (adaptive based on confidence)
-5. Pattern-seeking click selection
-
-Mathematical Foundation:
-- Target range: 6-8 clicks (win prob = 45-57%, payout = 1.72-2.12x)
-- Streak-based bankroll management
-- Risk escalation on winning momentum
+Key characteristics:
+- High strategic focus (0.8-0.9)
+- Moderate risk tolerance (0.5-0.7)
+- Cash-out threshold: 2.12x minimum (as specified)
+- Complex decision-making with psychological elements
+- Long-term planning and adaptation
 """
 
-from typing import Dict, Any, Optional
 import random
+import numpy as np
+from typing import Dict, List, Tuple, Any, Optional
+from dataclasses import dataclass
 
-from .base import StrategyBase
-from game.math import win_probability, expected_value, get_observed_payout
+from ..game.math import win_probability, expected_value, payout_table_25_2, kelly_criterion_fraction, optimal_clicks
 
 
-class LelouchStrategy(StrategyBase):
+@dataclass
+class LelouchConfig:
+    """Configuration for Lelouch strategy."""
+    strategic_focus: float = 0.85
+    risk_tolerance: float = 0.6
+    cash_out_threshold: float = 2.12  # Minimum 2.12x as specified
+    max_clicks: int = 22
+    learning_rate: float = 0.06
+    confidence_threshold: float = 0.75
+    psychological_weight: float = 0.4
+    long_term_planning: float = 0.6
+    adaptation_rate: float = 0.1
+
+
+class LelouchStrategy:
     """
-    Lelouch - Strategic betting with streak-based escalation.
+    Lelouch - Strategic Mastermind Strategy
     
-    Key Features:
-    - Streak-aware bet sizing
-    - 2+ wins → 1.5x bet increase
-    - Loss after big bet → safety bet
-    - Adaptive target selection (6-8 clicks)
-    - Pattern-seeking intelligence
+    Implements a complex, strategic approach with psychological elements,
+    long-term planning, and a minimum 2.12x cash-out threshold.
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None,
-                 rng: Optional[random.Random] = None):
+    def __init__(self, config: Optional[LelouchConfig] = None):
+        self.config = config or LelouchConfig()
+        self.name = "Lelouch"
+        self.description = "Strategic mastermind with psychological elements"
+        
+        # Strategy state
+        self.current_strategic_focus = self.config.strategic_focus
+        self.current_risk_tolerance = self.config.risk_tolerance
+        self.clicks_made = 0
+        self.current_payout = 1.0
+        self.game_history = []
+        
+        # Performance tracking
+        self.total_games = 0
+        self.total_wins = 0
+        self.total_reward = 0.0
+        self.max_reward = 0.0
+        
+        # Strategic data
+        self.strategic_plans = []
+        self.psychological_profiles = []
+        self.adaptation_history = []
+        self.long_term_goals = []
+        
+        # Payout table
+        self.payout_table = payout_table_25_2()
+    
+    def select_action(self, state: Dict[str, Any], valid_actions: List[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
         """
-        Initialize Lelouch strategy.
+        Select action using Lelouch's strategic approach.
         
-        Config parameters:
-            - base_bet: Base bet amount (default: 10.0)
-            - safety_bet: Safety bet after big loss (default: 2.50)
-            - max_bet: Maximum bet allowed (default: 100.0)
-            - min_target: Minimum clicks (default: 6)
-            - max_target: Maximum clicks (default: 8)
-            - streak_multiplier: Bet increase on streak (default: 1.5)
-            - initial_bankroll: Starting bankroll (default: 1000.0)
+        Args:
+            state: Current game state
+            valid_actions: List of valid (row, col) tuples
+            
+        Returns:
+            Selected action or None to cash out
         """
-        super().__init__(config, rng)
+        if not valid_actions:
+            return None
         
-        self.name = "Lelouch vi Britannia"
-        self.safety_bet = self.config.get('safety_bet', 2.50)
-        self.min_target = self.config.get('min_target', 6)
-        self.max_target = self.config.get('max_target', 8)
-        self.streak_multiplier = self.config.get('streak_multiplier', 1.5)
+        # Update strategy state
+        self.clicks_made = state.get('clicks_made', 0)
+        self.current_payout = state.get('current_payout', 1.0)
         
-        # Betting state
-        self.current_bet = self.base_bet
-        self.in_safety_mode = False
-        self.last_bet_was_big = False
+        # Check if we should cash out
+        if self._should_cash_out(state):
+            return None
         
-        # Strategic state
-        self.confidence = 1.0  # Affects target selection
+        # Calculate strategic action selection
+        action = self._select_strategic_action(state, valid_actions)
         
-    def decide(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        return action
+    
+    def _should_cash_out(self, state: Dict[str, Any]) -> bool:
         """
-        Make decision using Lelouch's strategic analysis.
+        Determine if we should cash out based on Lelouch's strategic criteria.
         
         Args:
             state: Current game state
             
         Returns:
-            Decision dictionary
+            True if we should cash out
         """
-        # If game not active, place bet
-        if not state.get('game_active', False):
-            bet_amount = self._calculate_strategic_bet()
-            target = self._determine_strategic_target()
-            return {
-                "action": "bet",
-                "bet": bet_amount,
-                "max_clicks": target
-            }
-        
-        # In-game: strategic clicking
+        current_payout = state.get('current_payout', 1.0)
         clicks_made = state.get('clicks_made', 0)
-        target = self._get_current_target(state)
-        current_mult = state.get('current_multiplier', 1.0)
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 2)
         
-        # Strategic decision: continue or take profit?
-        if clicks_made >= target:
-            return {"action": "cashout"}
+        # Always cash out if we've reached the minimum threshold
+        if current_payout >= self.config.cash_out_threshold:
+            return True
         
-        # Early cashout if multiplier looks good and confidence is low
-        if clicks_made >= self.min_target and self.confidence < 0.7 and current_mult >= 1.7:
-            return {"action": "cashout"}
+        # Cash out if we've made too many clicks
+        if clicks_made >= self.config.max_clicks:
+            return True
         
-        # Continue clicking
-        position = self._choose_strategic_position(state)
+        # Calculate remaining tiles and mines
+        total_tiles = board_size * board_size
+        remaining_tiles = total_tiles - clicks_made
+        remaining_mines = mine_count
+        
+        if remaining_tiles <= remaining_mines:
+            return True
+        
+        # Strategic decision: consider long-term goals and psychological factors
+        strategic_analysis = self._analyze_strategic_position(state)
+        
+        # Cash out if strategic analysis suggests it's optimal
+        if strategic_analysis['should_cash_out']:
+            return True
+        
+        # Additional psychological check
+        psychological_factor = self._calculate_psychological_factor(state)
+        if psychological_factor < 0.3:  # Low confidence
+            return True
+        
+        return False
+    
+    def _select_strategic_action(self, state: Dict[str, Any], valid_actions: List[Tuple[int, int]]) -> Tuple[int, int]:
+        """
+        Select action using strategic decision-making.
+        
+        Args:
+            state: Current game state
+            valid_actions: List of valid actions
+        
+        Returns:
+            Selected action
+        """
+        # Calculate strategic scores for all actions
+        action_scores = []
+        
+        for action in valid_actions:
+            score = self._calculate_strategic_score(action, state)
+            action_scores.append((action, score))
+        
+        # Sort by score (highest first)
+        action_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Apply strategic focus: choose from top actions with strategic consideration
+        if random.random() < self.current_strategic_focus:
+            # Choose from top 25% of actions (most strategic)
+            top_actions = action_scores[:max(1, len(action_scores) // 4)]
+            selected_action = random.choice(top_actions)[0]
+        else:
+            # Choose from top 50% of actions (still strategic)
+            top_actions = action_scores[:max(1, len(action_scores) // 2)]
+            selected_action = random.choice(top_actions)[0]
+        
+        return selected_action
+    
+    def _calculate_strategic_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate strategic score for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Strategic score (higher is better)
+        """
+        # Strategic expected value
+        strategic_ev = self._calculate_strategic_ev(action, state)
+        
+        # Psychological score
+        psychological_score = self._calculate_psychological_score(action, state)
+        
+        # Long-term planning score
+        long_term_score = self._calculate_long_term_score(action, state)
+        
+        # Adaptation score
+        adaptation_score = self._calculate_adaptation_score(action, state)
+        
+        # Combine scores with strategic weights
+        total_score = (
+            strategic_ev * 0.3 +
+            psychological_score * 0.25 +
+            long_term_score * 0.25 +
+            adaptation_score * 0.2
+        )
+        
+        return total_score
+    
+    def _calculate_strategic_ev(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate strategic expected value for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Strategic expected value
+        """
+        clicks_made = state.get('clicks_made', 0)
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 2)
+        
+        # Calculate expected value for next click
+        next_clicks = clicks_made + 1
+        win_prob = win_probability(next_clicks, board_size * board_size, mine_count)
+        payout = self.payout_table.get(next_clicks, 1.0)
+        
+        expected_val = win_prob * payout - (1 - win_prob) * 1.0
+        
+        # Apply strategic adjustment
+        strategic_ev = expected_val * self.current_strategic_focus
+        
+        # Normalize to 0-1
+        return max(0.0, min(1.0, strategic_ev / 5.0))
+    
+    def _calculate_psychological_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate psychological score for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+        
+        Returns:
+            Psychological score
+        """
+        # Psychological score based on action characteristics
+        row, col = action
+        board_size = state.get('board_size', 5)
+        
+        # Center actions are more psychologically significant
+        center = board_size // 2
+        distance_from_center = abs(row - center) + abs(col - center)
+        max_distance = board_size - 1
+        
+        center_score = 1.0 - (distance_from_center / max_distance)
+        
+        # Psychological factor from game state
+        psychological_factor = self._calculate_psychological_factor(state)
+        
+        # Combine psychological elements
+        psychological_score = (center_score + psychological_factor) / 2
+        
+        return psychological_score
+    
+    def _calculate_long_term_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate long-term planning score for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Long-term planning score
+        """
+        # Long-term score based on strategic position
+        strategic_position = self._analyze_strategic_position(state)
+        
+        # Long-term goals consideration
+        long_term_goals = self._get_long_term_goals(state)
+        
+        # Combine long-term factors
+        long_term_score = (strategic_position['long_term_value'] + long_term_goals) / 2
+        
+        return long_term_score
+    
+    def _calculate_adaptation_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate adaptation score for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Adaptation score
+        """
+        # Adaptation score based on recent performance
+        if len(self.adaptation_history) < 5:
+            return 0.5
+        
+        recent_performance = self.adaptation_history[-5:]
+        avg_performance = np.mean(recent_performance)
+        
+        # Adaptation score based on performance trend
+        if len(recent_performance) >= 3:
+            trend = np.polyfit(range(len(recent_performance)), recent_performance, 1)[0]
+            adaptation_score = 0.5 + trend * 0.5
+        else:
+            adaptation_score = avg_performance
+        
+        return max(0.0, min(1.0, adaptation_score))
+    
+    def _analyze_strategic_position(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze strategic position and provide recommendations.
+        
+        Args:
+            state: Current game state
+            
+        Returns:
+            Strategic analysis dictionary
+        """
+        clicks_made = state.get('clicks_made', 0)
+        current_payout = state.get('current_payout', 1.0)
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 2)
+        
+        # Calculate strategic metrics
+        win_prob = self._calculate_win_probability(state)
+        expected_val = self._calculate_expected_value_continue(state)
+        
+        # Strategic decision factors
+        should_cash_out = False
+        long_term_value = 0.0
+        
+        # Cash out if expected value is declining
+        if expected_val < current_payout * 0.8:
+            should_cash_out = True
+        
+        # Long-term value based on strategic position
+        long_term_value = win_prob * expected_val
+        
         return {
-            "action": "click",
-            "position": position
+            'should_cash_out': should_cash_out,
+            'long_term_value': long_term_value,
+            'win_probability': win_prob,
+            'expected_value': expected_val,
+            'strategic_confidence': (win_prob + expected_val) / 2
         }
     
-    def _calculate_strategic_bet(self) -> float:
+    def _calculate_psychological_factor(self, state: Dict[str, Any]) -> float:
         """
-        Calculate bet based on streak analysis and risk management.
-        
-        Returns:
-            Bet amount
-        """
-        if self.in_safety_mode:
-            # Safety mode after big loss
-            return min(self.safety_bet, self.bankroll)
-        
-        # Base bet
-        bet = self.base_bet
-        
-        # Escalate on win streaks
-        if self.win_streak >= 2:
-            # Apply streak multiplier
-            multiplier = 1 + (self.win_streak - 1) * (self.streak_multiplier - 1)
-            bet = self.base_bet * min(multiplier, 3.0)  # Cap at 3x
-            self.last_bet_was_big = (bet > self.base_bet * 1.5)
-        else:
-            self.last_bet_was_big = False
-        
-        # Apply confidence scaling
-        bet = bet * self.confidence
-        
-        # Enforce limits
-        bet = max(self.safety_bet, min(bet, self.max_bet, self.bankroll))
-        
-        return bet
-    
-    def _determine_strategic_target(self) -> int:
-        """
-        Determine target clicks based on confidence and streak.
-        
-        Returns:
-            Target click count
-        """
-        # High confidence + winning streak → aggressive
-        if self.win_streak >= 2 and self.confidence >= 0.8:
-            return self.max_target
-        
-        # Low confidence → conservative
-        if self.confidence < 0.5 or self.loss_streak >= 2:
-            return self.min_target
-        
-        # Balanced approach
-        return (self.min_target + self.max_target) // 2
-    
-    def _get_current_target(self, state: Dict[str, Any]) -> int:
-        """
-        Get target for current game (set at start).
+        Calculate psychological factor for current state.
         
         Args:
             state: Current game state
             
         Returns:
-            Target clicks
+            Psychological factor (0-1)
         """
-        # Would normally store this at game start, but for now recalculate
-        return self._determine_strategic_target()
-    
-    def _choose_strategic_position(self, state: Dict[str, Any]) -> tuple:
-        """
-        Choose position using pattern-seeking intelligence.
+        clicks_made = state.get('clicks_made', 0)
+        current_payout = state.get('current_payout', 1.0)
         
-        Lelouch analyzes revealed patterns and avoids clustering.
+        # Psychological factor based on game progress
+        progress_factor = clicks_made / 20.0  # Normalize to 0-1
+        
+        # Psychological factor based on payout
+        payout_factor = min(current_payout / 5.0, 1.0)  # Normalize to 0-1
+        
+        # Combine psychological factors
+        psychological_factor = (progress_factor + payout_factor) / 2
+        
+        return psychological_factor
+    
+    def _get_long_term_goals(self, state: Dict[str, Any]) -> float:
+        """
+        Get long-term goals score.
         
         Args:
             state: Current game state
             
         Returns:
-            (row, col) tuple
+            Long-term goals score
         """
+        # Long-term goals based on strategic objectives
+        current_payout = state.get('current_payout', 1.0)
+        clicks_made = state.get('clicks_made', 0)
+        
+        # Goal: maximize payout while minimizing risk
+        goal_score = min(current_payout / 10.0, 1.0)  # Normalize to 0-1
+        
+        return goal_score
+    
+    def _calculate_expected_value_continue(self, state: Dict[str, Any]) -> float:
+        """
+        Calculate expected value of continuing.
+        
+        Args:
+            state: Current game state
+            
+        Returns:
+            Expected value of continuing
+        """
+        clicks_made = state.get('clicks_made', 0)
         board_size = state.get('board_size', 5)
-        revealed = state.get('revealed', [[False] * board_size for _ in range(board_size)])
+        mine_count = state.get('mine_count', 2)
         
-        # Find unrevealed positions
-        unrevealed = []
-        isolated_positions = []  # Positions far from revealed tiles
-        
-        for r in range(board_size):
-            for c in range(board_size):
-                if not revealed[r][c]:
-                    pos = (r, c)
-                    unrevealed.append(pos)
-                    
-                    # Check if position is isolated (no adjacent revealed tiles)
-                    is_isolated = True
-                    for dr in [-1, 0, 1]:
-                        for dc in [-1, 0, 1]:
-                            if dr == 0 and dc == 0:
-                                continue
-                            nr, nc = r + dr, c + dc
-                            if 0 <= nr < board_size and 0 <= nc < board_size:
-                                if revealed[nr][nc]:
-                                    is_isolated = False
-                                    break
-                        if not is_isolated:
-                            break
-                    
-                    if is_isolated:
-                        isolated_positions.append(pos)
-        
-        # Strategic preference: isolated positions (spread out pattern)
-        if isolated_positions and self.rng.random() < 0.6:
-            return self.rng.choice(isolated_positions)
-        elif unrevealed:
-            return self.rng.choice(unrevealed)
-        
-        return (0, 0)
+        # Calculate expected value for next click
+        next_clicks = clicks_made + 1
+        return expected_value(next_clicks, board_size * board_size, mine_count, self.payout_table)
     
-    def on_result(self, result: Dict[str, Any]) -> None:
+    def _calculate_win_probability(self, state: Dict[str, Any]) -> float:
         """
-        Process result and update strategic state.
+        Calculate win probability for current state.
         
         Args:
-            result: Game result dictionary
+            state: Current game state
+            
+        Returns:
+            Win probability
         """
-        # Update base tracking
-        self.update_tracking(result)
+        clicks_made = state.get('clicks_made', 0)
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 2)
         
-        won = result.get('win', False)
+        return win_probability(clicks_made, board_size * board_size, mine_count)
+    
+    def update(self, state: Dict[str, Any], action: Optional[Tuple[int, int]], 
+               reward: float, next_state: Dict[str, Any], done: bool) -> None:
+        """
+        Update strategy based on game outcome.
         
-        if won:
-            # Win increases confidence
-            self.confidence = min(self.confidence + 0.1, 1.0)
+        Args:
+            state: Previous state
+            action: Action taken
+            reward: Reward received
+            next_state: Next state
+            done: Whether game is done
+        """
+        # Update game history
+        self.game_history.append({
+            'state': state,
+            'action': action,
+            'reward': reward,
+            'done': done
+        })
+        
+        # Update performance tracking
+        self.total_games += 1
+        if done and reward > 0:
+            self.total_wins += 1
+            self.total_reward += reward
+            self.max_reward = max(self.max_reward, reward)
+        
+        # Update strategic data
+        if action is not None:
+            strategic_analysis = self._analyze_strategic_position(state)
+            self.strategic_plans.append(strategic_analysis)
             
-            # Exit safety mode on win
-            if self.in_safety_mode:
-                self.in_safety_mode = False
+            psychological_factor = self._calculate_psychological_factor(state)
+            self.psychological_profiles.append(psychological_factor)
             
-        else:
-            # Loss decreases confidence
-            self.confidence = max(self.confidence - 0.15, 0.3)
-            
-            # Enter safety mode if last bet was big
-            if self.last_bet_was_big:
-                self.in_safety_mode = True
+            # Update adaptation history
+            self.adaptation_history.append(reward)
+        
+        # Keep only recent history (last 100 games)
+        if len(self.strategic_plans) > 100:
+            self.strategic_plans = self.strategic_plans[-100:]
+        if len(self.psychological_profiles) > 100:
+            self.psychological_profiles = self.psychological_profiles[-100:]
+        if len(self.adaptation_history) > 100:
+            self.adaptation_history = self.adaptation_history[-100:]
+        
+        # Adaptive learning: adjust strategic focus and risk tolerance
+        self._adapt_strategy()
+    
+    def _adapt_strategy(self) -> None:
+        """
+        Adapt strategy parameters based on recent performance.
+        """
+        if len(self.adaptation_history) < 10:
+            return
+        
+        recent_rewards = self.adaptation_history[-10:]
+        recent_strategic_plans = self.strategic_plans[-10:] if self.strategic_plans else []
+        recent_psychological = self.psychological_profiles[-10:] if self.psychological_profiles else []
+        
+        # Adjust strategic focus based on performance
+        avg_reward = np.mean(recent_rewards)
+        if avg_reward > 2.0:
+            # Increase strategic focus if doing well
+            self.current_strategic_focus = min(0.95, self.current_strategic_focus + 0.01)
+        elif avg_reward < 1.0:
+            # Decrease strategic focus if doing poorly
+            self.current_strategic_focus = max(0.7, self.current_strategic_focus - 0.02)
+        
+        # Adjust risk tolerance based on strategic analysis
+        if recent_strategic_plans:
+            avg_strategic_confidence = np.mean([p['strategic_confidence'] for p in recent_strategic_plans])
+            if avg_strategic_confidence > 0.7:
+                self.current_risk_tolerance = min(0.8, self.current_risk_tolerance + 0.01)
+            elif avg_strategic_confidence < 0.5:
+                self.current_risk_tolerance = max(0.4, self.current_risk_tolerance - 0.01)
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get strategy performance statistics.
+        
+        Returns:
+            Dictionary of statistics
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'total_games': self.total_games,
+            'total_wins': self.total_wins,
+            'win_rate': self.total_wins / self.total_games if self.total_games > 0 else 0.0,
+            'total_reward': self.total_reward,
+            'avg_reward': self.total_reward / self.total_games if self.total_games > 0 else 0.0,
+            'max_reward': self.max_reward,
+            'current_strategic_focus': self.current_strategic_focus,
+            'current_risk_tolerance': self.current_risk_tolerance,
+            'avg_strategic_confidence': np.mean([p['strategic_confidence'] for p in self.strategic_plans]) if self.strategic_plans else 0.0,
+            'avg_psychological_factor': np.mean(self.psychological_profiles) if self.psychological_profiles else 0.0,
+            'adaptation_history_length': len(self.adaptation_history)
+        }
     
     def reset(self) -> None:
-        """Reset strategy state for new session."""
-        super().reset()
-        self.current_bet = self.base_bet
-        self.in_safety_mode = False
-        self.last_bet_was_big = False
-        self.confidence = 1.0
+        """Reset strategy state for new game."""
+        self.clicks_made = 0
+        self.current_payout = 1.0
+        self.game_history = []
     
-    def serialize(self) -> Dict[str, Any]:
-        """Serialize strategy state."""
-        data = super().serialize()
-        data.update({
-            'current_bet': self.current_bet,
-            'in_safety_mode': self.in_safety_mode,
-            'last_bet_was_big': self.last_bet_was_big,
-            'confidence': self.confidence,
-            'min_target': self.min_target,
-            'max_target': self.max_target,
-        })
-        return data
-    
-    def deserialize(self, data: Dict[str, Any]) -> None:
-        """Load strategy state."""
-        super().deserialize(data)
-        self.current_bet = data.get('current_bet', self.base_bet)
-        self.in_safety_mode = data.get('in_safety_mode', False)
-        self.last_bet_was_big = data.get('last_bet_was_big', False)
-        self.confidence = data.get('confidence', 1.0)
-        self.min_target = data.get('min_target', 6)
-        self.max_target = data.get('max_target', 8)
+    def get_strategy_info(self) -> Dict[str, Any]:
+        """
+        Get detailed strategy information.
+        
+        Returns:
+            Dictionary of strategy information
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'config': {
+                'strategic_focus': self.config.strategic_focus,
+                'risk_tolerance': self.config.risk_tolerance,
+                'cash_out_threshold': self.config.cash_out_threshold,
+                'max_clicks': self.config.max_clicks,
+                'learning_rate': self.config.learning_rate,
+                'confidence_threshold': self.config.confidence_threshold,
+                'psychological_weight': self.config.psychological_weight,
+                'long_term_planning': self.config.long_term_planning,
+                'adaptation_rate': self.config.adaptation_rate
+            },
+            'current_state': {
+                'current_strategic_focus': self.current_strategic_focus,
+                'current_risk_tolerance': self.current_risk_tolerance,
+                'avg_strategic_confidence': np.mean([p['strategic_confidence'] for p in self.strategic_plans]) if self.strategic_plans else 0.0,
+                'avg_psychological_factor': np.mean(self.psychological_profiles) if self.psychological_profiles else 0.0
+            }
+        }
 
 
 if __name__ == "__main__":
-    # Test Lelouch strategy
-    strategy = LelouchStrategy(config={
-        'base_bet': 10.0,
-        'safety_bet': 2.50,
-        'max_bet': 100.0,
-        'initial_bankroll': 1000.0,
-        'min_target': 6,
-        'max_target': 8,
-        'streak_multiplier': 1.5
-    })
+    # Test the strategy
+    strategy = LelouchStrategy()
     
-    print(f"Strategy: {strategy.name}")
-    print(f"Target range: {strategy.min_target}-{strategy.max_target} clicks")
-    print(f"Streak multiplier: {strategy.streak_multiplier}x")
-    print(f"Safety bet: ${strategy.safety_bet}")
-    
-    # Simulate win streak
-    print("\n--- Simulating win streak ---")
-    for i in range(5):
-        bet = strategy._calculate_strategic_bet()
-        target = strategy._determine_strategic_target()
-        print(f"Game {i+1}: Bet ${bet:.2f}, Target {target}, "
-              f"Confidence {strategy.confidence:.2f}, "
-              f"Streak: {strategy.win_streak}")
-        
-        # Simulate win
-        result = {
-            'win': True,
-            'payout': 1.95,
-            'clicks': target,
-            'profit': bet * 0.95,
-            'final_bankroll': strategy.bankroll + bet * 0.95,
-            'bet_amount': bet
-        }
-        strategy.on_result(result)
-    
-    # Simulate big loss
-    print("\n--- Big loss after streak ---")
-    bet = strategy._calculate_strategic_bet()
-    result = {
-        'win': False,
-        'payout': 0.0,
-        'clicks': 3,
-        'profit': -bet,
-        'final_bankroll': strategy.bankroll - bet,
-        'bet_amount': bet
+    # Test state
+    test_state = {
+        'board_size': 5,
+        'mine_count': 2,
+        'clicks_made': 5,
+        'current_payout': 2.5,
+        'revealed_cells': [(0, 0), (0, 1), (1, 0), (2, 2), (3, 3)]
     }
-    strategy.on_result(result)
     
-    print(f"\nAfter loss: Safety mode = {strategy.in_safety_mode}")
-    print(f"Next bet: ${strategy._calculate_strategic_bet():.2f}")
-    print(f"Final state: {strategy}")
-
+    # Test valid actions
+    valid_actions = [(0, 2), (1, 1), (1, 2), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)]
+    
+    # Test action selection
+    action = strategy.select_action(test_state, valid_actions)
+    print(f"Selected action: {action}")
+    
+    # Test statistics
+    stats = strategy.get_statistics()
+    print(f"Strategy statistics: {stats}")
+    
+    # Test strategy info
+    info = strategy.get_strategy_info()
+    print(f"Strategy info: {info}")

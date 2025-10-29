@@ -1,31 +1,25 @@
 """
-Strategies Package
+Character Strategies Module
 
-Collection of character-based strategies for the Mines game.
-Each strategy implements unique betting and decision-making logic.
-
-Available Strategies:
-- Takeshi: Aggressive doubling-up with tranquility mode
-- Yuzu: Controlled chaos with max 7 clicks
-- Aoi: Cooperative sync mechanism
-- Kazuya: Conservative with periodic dagger strikes  
-- Lelouch: Streak-based strategic betting
+This module contains all character-based strategies for the Mines game,
+each implementing different risk profiles and decision-making approaches.
 """
 
-from .base import StrategyBase, SimpleRandomStrategy
-from .takeshi import TakeshiStrategy
-from .yuzu import YuzuStrategy
-from .aoi import AoiStrategy
-from .kazuya import KazuyaStrategy
-from .lelouch import LelouchStrategy
+from .takeshi import TakeshiKovacsStrategy, TakeshiConfig
+from .aoi import AoiStrategy, AoiConfig
+from .yuzu import YuzuStrategy, YuzuConfig
+from .kazuya import KazuyaStrategy, KazuyaConfig
+from .lelouch import LelouchStrategy, LelouchConfig
 
 __all__ = [
-    'StrategyBase',
-    'SimpleRandomStrategy',
-    'TakeshiStrategy',
-    'YuzuStrategy',
+    'TakeshiKovacsStrategy',
+    'TakeshiConfig',
     'AoiStrategy',
+    'AoiConfig',
+    'YuzuStrategy',
+    'YuzuConfig',
     'KazuyaStrategy',
+    'KazuyaConfig',
     'LelouchStrategy',
+    'LelouchConfig'
 ]
-

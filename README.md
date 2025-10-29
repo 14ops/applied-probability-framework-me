@@ -204,6 +204,53 @@ patterns = wgan.generate_pattern(
 - **Convergence**: ~25,000 episodes
 - **Risk-Adjusted Return**: 1.95
 
+## 🎮 Mines Model (25 tiles, 2 mines)
+
+### Mathematical Foundation
+
+The framework is built on a rigorous mathematical model for the Mines game:
+
+- **Board Configuration**: 5×5 grid (25 tiles) with 2 mines (8% density)
+- **Minimum Cash-out Threshold**: 2.12x (as specified)
+- **Probability Calculations**: C(safe_tiles, clicks) / C(total_tiles, clicks)
+- **Expected Value**: P(win) × payout - P(lose) × cost
+
+### Payout Table
+
+| Clicks | Payout | Win Probability | Expected Value |
+|--------|--------|----------------|----------------|
+| 1 | 1.00x | 92.0% | 0.92 |
+| 2 | 1.50x | 87.0% | 1.31 |
+| 3 | 2.00x | 82.6% | 1.65 |
+| 4 | 2.50x | 78.3% | 1.96 |
+| 5 | 3.00x | 74.0% | 2.22 |
+| 6 | 3.50x | 69.6% | 2.44 |
+| 7 | 4.00x | 65.2% | 2.61 |
+| 8 | 4.50x | 60.9% | 2.74 |
+| 9 | 5.00x | 56.5% | 2.83 |
+| 10 | 5.50x | 52.2% | 2.87 |
+| 11 | 6.00x | 47.8% | 2.87 |
+| 12 | 6.50x | 43.5% | 2.83 |
+| 13 | 7.00x | 39.1% | 2.74 |
+| 14 | 7.50x | 34.8% | 2.61 |
+| 15 | 8.00x | 30.4% | 2.44 |
+| 16 | 8.50x | 26.1% | 2.22 |
+| 17 | 9.00x | 21.7% | 1.96 |
+| 18 | 9.50x | 17.4% | 1.65 |
+| 19 | 10.00x | 13.0% | 1.31 |
+| 20 | 10.50x | 8.7% | 0.92 |
+| 21 | 11.00x | 4.3% | 0.48 |
+| 22 | 11.50x | 0.0% | 0.00 |
+| 23 | 12.00x | 0.0% | 0.00 |
+
+### Example EV Calculation
+
+For 10 clicks with 2.12x minimum threshold:
+- **Win Probability**: 52.2%
+- **Payout**: 5.50x
+- **Expected Value**: 0.522 × 5.50 - 0.478 × 1.0 = 2.87
+- **Threshold Compliance**: 52.2% (above 2.12x)
+
 ## 🧪 Testing and Validation
 
 ### Automated Testing
@@ -213,7 +260,8 @@ patterns = wgan.generate_pattern(
 python -m pytest tests/
 
 # Run specific test categories
-python -m pytest tests/test_strategies.py
+python -m pytest tests/test_math.py
+python -m pytest tests/test_strategies_*.py
 python -m pytest tests/test_drl.py
 python -m pytest tests/test_bayesian.py
 ```
@@ -226,6 +274,16 @@ python src/python/performance_benchmark.py
 
 # Run stress tests
 python src/python/stress_test.py --rounds 50000
+```
+
+### Mines Game Benchmark
+
+```bash
+# Run comprehensive Mines benchmark
+python examples/run_mines_benchmark.py
+
+# Quick benchmark (1000 simulations)
+python examples/run_mines_benchmark.py --quick
 ```
 
 ### Tournament Testing

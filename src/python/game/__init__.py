@@ -1,36 +1,36 @@
 """
-Game Mathematics and Utilities Package
+Mines Game Core Module
 
-Provides mathematical foundations for probability games including:
-- Win probability calculations
-- Payout formulas
-- Expected value computations
-- Kelly criterion for optimal bet sizing
+This module contains the core mathematical functions and utilities
+for the Mines game probability calculations and payout systems.
 """
 
 from .math import (
     win_probability,
-    win_probability_multiplicative,
-    theoretical_fair_payout,
-    actual_payout_with_house_edge,
-    get_observed_payout,
+    payout_table_25_2,
+    payout_table_7x7,
+    payout_table_8x8,
     expected_value,
-    kelly_criterion,
-    generate_payout_table,
-    print_payout_table,
-    OBSERVED_PAYOUTS,
+    optimal_clicks,
+    risk_reward_ratio,
+    kelly_criterion_fraction,
+    validate_probabilities,
+    get_board_configurations,
+    calculate_all_expected_values,
+    run_math_validation
 )
 
 __all__ = [
     'win_probability',
-    'win_probability_multiplicative',
-    'theoretical_fair_payout',
-    'actual_payout_with_house_edge',
-    'get_observed_payout',
+    'payout_table_25_2',
+    'payout_table_7x7',
+    'payout_table_8x8',
     'expected_value',
-    'kelly_criterion',
-    'generate_payout_table',
-    'print_payout_table',
-    'OBSERVED_PAYOUTS',
+    'optimal_clicks',
+    'risk_reward_ratio',
+    'kelly_criterion_fraction',
+    'validate_probabilities',
+    'get_board_configurations',
+    'calculate_all_expected_values',
+    'run_math_validation'
 ]
-

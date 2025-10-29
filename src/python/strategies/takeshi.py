@@ -1,280 +1,458 @@
 """
-Takeshi Kovacs Strategy - Aggressive Berserker
+Takeshi Kovacs Strategy - Aggressive Risk-Taker
 
-Personality: Former CTAC Envoy turned street fighter. Aggressive risk-taker
-who doubles down after losses but knows when to pause.
+This strategy implements an aggressive approach with high risk tolerance,
+focusing on maximizing potential rewards through bold decision-making.
 
-Core Mechanics:
-1. Martingale-style doubling after losses (with cap)
-2. Tranquility mode after 2 consecutive doubles (return to base bet)
-3. Targets 8 clicks (high-risk, high-reward zone)
-4. Aggressive bet sizing when winning
-
-Mathematical Foundation:
-- Target clicks: 8 (win prob = 45.33%, payout = 2.12x)
-- EV at 8 clicks with $10 bet: +$4.14
-- Doubling sequence: $10 → $20 → $40 → (tranquility) → $10
+Key characteristics:
+- High aggression level (0.8-0.9)
+- High risk tolerance (0.7-0.8)
+- Cash-out threshold: 2.12x minimum (as specified)
+- Prefers higher payout targets
+- Quick decision-making with minimal hesitation
 """
 
-from typing import Dict, Any, Optional
 import random
+import numpy as np
+from typing import Dict, List, Tuple, Any, Optional
+from dataclasses import dataclass
 
-from .base import StrategyBase
-from game.math import win_probability, expected_value, get_observed_payout
+from ..game.math import win_probability, expected_value, payout_table_25_2, kelly_criterion_fraction
 
 
-class TakeshiStrategy(StrategyBase):
+@dataclass
+class TakeshiConfig:
+    """Configuration for Takeshi Kovacs strategy."""
+    aggression_level: float = 0.85
+    risk_tolerance: float = 0.75
+    cash_out_threshold: float = 2.12  # Minimum 2.12x as specified
+    max_clicks: int = 20
+    learning_rate: float = 0.1
+    confidence_threshold: float = 0.6
+    payout_target_multiplier: float = 1.2
+
+
+class TakeshiKovacsStrategy:
     """
-    Takeshi Kovacs - Aggressive berserker with doubling mechanic.
+    Takeshi Kovacs - Aggressive Risk-Taker Strategy
     
-    Key Features:
-    - Doubles bet after each loss (max 2 doubles)
-    - Tranquility mode: Resets to base bet after 2 doubles
-    - Always targets 8 clicks for optimal risk/reward
-    - Aggressive betting when on winning streaks
+    Implements a high-risk, high-reward approach with aggressive decision-making
+    and a minimum 2.12x cash-out threshold as specified.
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None, 
-                 rng: Optional[random.Random] = None):
-        """
-        Initialize Takeshi strategy.
-        
-        Config parameters:
-            - base_bet: Base bet amount (default: 10.0)
-            - max_bet: Maximum bet allowed (default: 100.0)
-            - target_clicks: Target number of clicks (default: 8)
-            - max_doubles: Maximum consecutive doubles (default: 2)
-            - initial_bankroll: Starting bankroll (default: 1000.0)
-        """
-        super().__init__(config, rng)
-        
+    def __init__(self, config: Optional[TakeshiConfig] = None):
+        self.config = config or TakeshiConfig()
         self.name = "Takeshi Kovacs"
-        self.target_clicks = self.config.get('target_clicks', 8)
-        self.max_doubles = self.config.get('max_doubles', 2)
+        self.description = "Aggressive risk-taker with high payout targets"
         
-        # Doubling tracking
-        self.current_bet = self.base_bet
-        self.consecutive_losses = 0
-        self.in_tranquility_mode = False
-        self.tranquility_games_remaining = 0
+        # Strategy state
+        self.current_aggression = self.config.aggression_level
+        self.current_risk_tolerance = self.config.risk_tolerance
+        self.clicks_made = 0
+        self.current_payout = 1.0
+        self.game_history = []
         
-        # Takeshi's aggressive parameters
-        self.aggression_multiplier = 1.5  # Bet more when winning
+        # Performance tracking
+        self.total_games = 0
+        self.total_wins = 0
+        self.total_reward = 0.0
+        self.max_reward = 0.0
         
-    def decide(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        # Adaptive learning
+        self.success_rate = 0.5
+        self.recent_performance = []
+        
+        # Payout table
+        self.payout_table = payout_table_25_2()
+    
+    def select_action(self, state: Dict[str, Any], valid_actions: List[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
         """
-        Make decision using Takeshi's aggressive doubling strategy.
+        Select action using Takeshi's aggressive strategy.
+        
+        Args:
+            state: Current game state
+            valid_actions: List of valid (row, col) tuples
+            
+        Returns:
+            Selected action or None to cash out
+        """
+        if not valid_actions:
+            return None
+        
+        # Update strategy state
+        self.clicks_made = state.get('clicks_made', 0)
+        self.current_payout = state.get('current_payout', 1.0)
+        
+        # Check if we should cash out
+        if self._should_cash_out(state):
+            return None
+        
+        # Calculate aggressive action selection
+        action = self._select_aggressive_action(state, valid_actions)
+        
+        return action
+    
+    def _should_cash_out(self, state: Dict[str, Any]) -> bool:
+        """
+        Determine if we should cash out based on Takeshi's criteria.
         
         Args:
             state: Current game state
             
         Returns:
-            Decision dictionary with action, bet, position
+            True if we should cash out
         """
-        # If game not active, place bet
-        if not state.get('game_active', False):
-            bet_amount = self._calculate_bet_amount()
-            return {
-                "action": "bet",
-                "bet": bet_amount,
-                "max_clicks": self.target_clicks
-            }
-        
-        # In-game: decide whether to continue clicking or cashout
+        current_payout = state.get('current_payout', 1.0)
         clicks_made = state.get('clicks_made', 0)
-        current_multiplier = state.get('current_multiplier', 1.0)
         
-        # Always go for target clicks (aggressive!)
-        if clicks_made < self.target_clicks:
-            position = self._choose_click_position(state)
-            return {
-                "action": "click",
-                "position": position
-            }
-        else:
-            # Reached target, cash out
-            return {"action": "cashout"}
+        # Always cash out if we've reached the minimum threshold
+        if current_payout >= self.config.cash_out_threshold:
+            return True
+        
+        # Cash out if we've made too many clicks
+        if clicks_made >= self.config.max_clicks:
+            return True
+        
+        # Calculate expected value for continuing
+        remaining_tiles = state.get('board_size', 5) ** 2 - clicks_made
+        remaining_mines = state.get('mine_count', 2)
+        
+        if remaining_tiles <= remaining_mines:
+            return True
+        
+        # Aggressive threshold: only cash out if payout is very high
+        # Takeshi prefers to keep going for higher rewards
+        aggressive_threshold = self.config.cash_out_threshold * self.config.payout_target_multiplier
+        
+        if current_payout >= aggressive_threshold:
+            # Still might continue if confidence is high
+            confidence = self._calculate_confidence(state)
+            if confidence < self.config.confidence_threshold:
+                return True
+        
+        return False
     
-    def _calculate_bet_amount(self) -> float:
+    def _select_aggressive_action(self, state: Dict[str, Any], valid_actions: List[Tuple[int, int]]) -> Tuple[int, int]:
         """
-        Calculate bet amount based on doubling strategy.
+        Select action using aggressive decision-making.
         
+        Args:
+            state: Current game state
+            valid_actions: List of valid actions
+            
         Returns:
-            Bet amount
+            Selected action
         """
-        if self.in_tranquility_mode:
-            # In tranquility mode, use base bet
-            return min(self.base_bet, self.bankroll)
+        # Calculate action scores based on aggression
+        action_scores = []
         
-        # Normal betting: double after losses up to max_doubles
-        bet = min(self.current_bet, self.max_bet, self.bankroll)
-        return bet
+        for action in valid_actions:
+            score = self._calculate_action_score(action, state)
+            action_scores.append((action, score))
+        
+        # Sort by score (highest first)
+        action_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Apply aggression: more likely to choose high-risk, high-reward actions
+        if random.random() < self.current_aggression:
+            # Choose from top 30% of actions
+            top_actions = action_scores[:max(1, len(action_scores) // 3)]
+            selected_action = random.choice(top_actions)[0]
+        else:
+            # Choose from top 50% of actions
+            top_actions = action_scores[:max(1, len(action_scores) // 2)]
+            selected_action = random.choice(top_actions)[0]
+        
+        return selected_action
     
-    def _choose_click_position(self, state: Dict[str, Any]) -> tuple:
+    def _calculate_action_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
         """
-        Choose next click position using aggressive logic.
+        Calculate score for an action based on Takeshi's criteria.
         
-        Takeshi prefers edge/corner positions (more information gain).
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Action score (higher is better)
+        """
+        row, col = action
+        board_size = state.get('board_size', 5)
+        clicks_made = state.get('clicks_made', 0)
+        current_payout = state.get('current_payout', 1.0)
+        
+        # Base score from position
+        position_score = self._calculate_position_score(row, col, board_size)
+        
+        # Risk score (Takeshi likes higher risk)
+        risk_score = self._calculate_risk_score(action, state)
+        
+        # Payout potential score
+        payout_score = self._calculate_payout_potential(action, state)
+        
+        # Aggression bonus
+        aggression_bonus = self.current_aggression * 0.5
+        
+        # Combine scores
+        total_score = (
+            position_score * 0.3 +
+            risk_score * 0.4 +
+            payout_score * 0.2 +
+            aggression_bonus * 0.1
+        )
+        
+        return total_score
+    
+    def _calculate_position_score(self, row: int, col: int, board_size: int) -> float:
+        """
+        Calculate position-based score.
+        
+        Args:
+            row: Row position
+            col: Column position
+            board_size: Size of the board
+            
+        Returns:
+            Position score
+        """
+        # Takeshi prefers center positions (higher risk, higher reward)
+        center = board_size // 2
+        distance_from_center = abs(row - center) + abs(col - center)
+        max_distance = board_size - 1
+        
+        # Normalize to 0-1 (closer to center = higher score)
+        position_score = 1.0 - (distance_from_center / max_distance)
+        
+        return position_score
+    
+    def _calculate_risk_score(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate risk score for an action.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Risk score (higher = more risk, which Takeshi prefers)
+        """
+        clicks_made = state.get('clicks_made', 0)
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 2)
+        
+        # Calculate remaining tiles and mines
+        total_tiles = board_size * board_size
+        remaining_tiles = total_tiles - clicks_made
+        remaining_mines = mine_count
+        
+        # Risk increases with more clicks made
+        risk_factor = clicks_made / total_tiles
+        
+        # Risk increases with fewer remaining tiles
+        remaining_risk = remaining_mines / remaining_tiles if remaining_tiles > 0 else 1.0
+        
+        # Combine risk factors
+        total_risk = (risk_factor + remaining_risk) / 2
+        
+        return total_risk
+    
+    def _calculate_payout_potential(self, action: Tuple[int, int], state: Dict[str, Any]) -> float:
+        """
+        Calculate potential payout score.
+        
+        Args:
+            action: Action to score
+            state: Current game state
+            
+        Returns:
+            Payout potential score
+        """
+        current_payout = state.get('current_payout', 1.0)
+        clicks_made = state.get('clicks_made', 0)
+        
+        # Calculate potential payout if we continue
+        potential_clicks = clicks_made + 1
+        potential_payout = self.payout_table.get(potential_clicks, current_payout * 1.1)
+        
+        # Score based on payout potential
+        payout_score = min(potential_payout / 10.0, 1.0)  # Normalize to 0-1
+        
+        return payout_score
+    
+    def _calculate_confidence(self, state: Dict[str, Any]) -> float:
+        """
+        Calculate confidence in current position.
         
         Args:
             state: Current game state
             
         Returns:
-            (row, col) tuple
+            Confidence level (0-1)
         """
+        clicks_made = state.get('clicks_made', 0)
         board_size = state.get('board_size', 5)
-        revealed = state.get('revealed', [[False] * board_size for _ in range(board_size)])
+        mine_count = state.get('mine_count', 2)
         
-        # Find all unrevealed positions
-        unrevealed = []
-        edge_positions = []
-        corner_positions = []
+        # Calculate win probability for current position
+        remaining_tiles = board_size * board_size - clicks_made
+        remaining_mines = mine_count
         
-        for r in range(board_size):
-            for c in range(board_size):
-                if not revealed[r][c]:
-                    pos = (r, c)
-                    unrevealed.append(pos)
-                    
-                    # Identify edges and corners
-                    is_edge = (r == 0 or r == board_size - 1 or 
-                              c == 0 or c == board_size - 1)
-                    is_corner = ((r == 0 or r == board_size - 1) and 
-                                (c == 0 or c == board_size - 1))
-                    
-                    if is_corner:
-                        corner_positions.append(pos)
-                    elif is_edge:
-                        edge_positions.append(pos)
+        if remaining_tiles <= remaining_mines:
+            return 0.0
         
-        # Preference order: corners > edges > random
-        if corner_positions and self.rng.random() < 0.6:
-            return self.rng.choice(corner_positions)
-        elif edge_positions and self.rng.random() < 0.4:
-            return self.rng.choice(edge_positions)
-        elif unrevealed:
-            return self.rng.choice(unrevealed)
+        # Calculate probability of winning with current clicks
+        win_prob = win_probability(clicks_made, board_size * board_size, mine_count)
         
-        # Fallback
-        return (0, 0)
+        # Adjust based on recent performance
+        performance_factor = np.mean(self.recent_performance[-10:]) if self.recent_performance else 0.5
+        
+        # Combine probability and performance
+        confidence = (win_prob + performance_factor) / 2
+        
+        return confidence
     
-    def on_result(self, result: Dict[str, Any]) -> None:
+    def update(self, state: Dict[str, Any], action: Optional[Tuple[int, int]], 
+               reward: float, next_state: Dict[str, Any], done: bool) -> None:
         """
-        Process result and update doubling strategy.
+        Update strategy based on game outcome.
         
         Args:
-            result: Game result dictionary
+            state: Previous state
+            action: Action taken
+            reward: Reward received
+            next_state: Next state
+            done: Whether game is done
         """
-        # Update base tracking
-        self.update_tracking(result)
+        # Update game history
+        self.game_history.append({
+            'state': state,
+            'action': action,
+            'reward': reward,
+            'done': done
+        })
         
-        won = result.get('win', False)
-        
-        if won:
-            # Victory! Reset doubling counter
-            self.consecutive_losses = 0
-            
-            # Increase bet slightly on wins (aggression)
-            if self.win_streak >= 2:
-                self.current_bet = min(
-                    self.base_bet * self.aggression_multiplier,
-                    self.max_bet
-                )
-            else:
-                self.current_bet = self.base_bet
-            
-            # Exit tranquility mode on win
-            self.in_tranquility_mode = False
-            self.tranquility_games_remaining = 0
-            
+        # Update performance tracking
+        self.total_games += 1
+        if done and reward > 0:
+            self.total_wins += 1
+            self.total_reward += reward
+            self.max_reward = max(self.max_reward, reward)
+            self.recent_performance.append(1.0)
         else:
-            # Loss - implement doubling mechanic
-            self.consecutive_losses += 1
-            
-            if self.in_tranquility_mode:
-                # In tranquility, just count down
-                self.tranquility_games_remaining -= 1
-                if self.tranquility_games_remaining <= 0:
-                    self.in_tranquility_mode = False
-                    self.consecutive_losses = 0
-                self.current_bet = self.base_bet
-                
-            elif self.consecutive_losses <= self.max_doubles:
-                # Double the bet (Martingale)
-                self.current_bet = min(
-                    self.current_bet * 2,
-                    self.max_bet,
-                    self.bankroll
-                )
-                
-            else:
-                # Hit max doubles - enter tranquility mode
-                self.in_tranquility_mode = True
-                self.tranquility_games_remaining = 3  # 3 games at base bet
-                self.current_bet = self.base_bet
-                self.consecutive_losses = 0
+            self.recent_performance.append(0.0)
+        
+        # Keep only recent performance (last 50 games)
+        if len(self.recent_performance) > 50:
+            self.recent_performance = self.recent_performance[-50:]
+        
+        # Update success rate
+        self.success_rate = self.total_wins / self.total_games if self.total_games > 0 else 0.5
+        
+        # Adaptive learning: adjust aggression based on performance
+        self._adapt_strategy()
+    
+    def _adapt_strategy(self) -> None:
+        """
+        Adapt strategy parameters based on recent performance.
+        """
+        if len(self.recent_performance) < 10:
+            return
+        
+        recent_success_rate = np.mean(self.recent_performance[-10:])
+        
+        # Adjust aggression based on performance
+        if recent_success_rate > 0.6:
+            # Increase aggression if doing well
+            self.current_aggression = min(0.95, self.current_aggression + 0.05)
+        elif recent_success_rate < 0.3:
+            # Decrease aggression if doing poorly
+            self.current_aggression = max(0.5, self.current_aggression - 0.05)
+        
+        # Adjust risk tolerance
+        if recent_success_rate > 0.7:
+            self.current_risk_tolerance = min(0.9, self.current_risk_tolerance + 0.02)
+        elif recent_success_rate < 0.4:
+            self.current_risk_tolerance = max(0.5, self.current_risk_tolerance - 0.02)
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get strategy performance statistics.
+        
+        Returns:
+            Dictionary of statistics
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'total_games': self.total_games,
+            'total_wins': self.total_wins,
+            'win_rate': self.total_wins / self.total_games if self.total_games > 0 else 0.0,
+            'total_reward': self.total_reward,
+            'avg_reward': self.total_reward / self.total_games if self.total_games > 0 else 0.0,
+            'max_reward': self.max_reward,
+            'current_aggression': self.current_aggression,
+            'current_risk_tolerance': self.current_risk_tolerance,
+            'success_rate': self.success_rate,
+            'recent_performance': self.recent_performance[-10:] if self.recent_performance else []
+        }
     
     def reset(self) -> None:
-        """Reset strategy state for new session."""
-        super().reset()
-        self.current_bet = self.base_bet
-        self.consecutive_losses = 0
-        self.in_tranquility_mode = False
-        self.tranquility_games_remaining = 0
+        """Reset strategy state for new game."""
+        self.clicks_made = 0
+        self.current_payout = 1.0
+        self.game_history = []
     
-    def serialize(self) -> Dict[str, Any]:
-        """Serialize strategy state."""
-        data = super().serialize()
-        data.update({
-            'current_bet': self.current_bet,
-            'consecutive_losses': self.consecutive_losses,
-            'in_tranquility_mode': self.in_tranquility_mode,
-            'tranquility_games_remaining': self.tranquility_games_remaining,
-            'target_clicks': self.target_clicks,
-        })
-        return data
-    
-    def deserialize(self, data: Dict[str, Any]) -> None:
-        """Load strategy state."""
-        super().deserialize(data)
-        self.current_bet = data.get('current_bet', self.base_bet)
-        self.consecutive_losses = data.get('consecutive_losses', 0)
-        self.in_tranquility_mode = data.get('in_tranquility_mode', False)
-        self.tranquility_games_remaining = data.get('tranquility_games_remaining', 0)
-        self.target_clicks = data.get('target_clicks', 8)
+    def get_strategy_info(self) -> Dict[str, Any]:
+        """
+        Get detailed strategy information.
+        
+        Returns:
+            Dictionary of strategy information
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'config': {
+                'aggression_level': self.config.aggression_level,
+                'risk_tolerance': self.config.risk_tolerance,
+                'cash_out_threshold': self.config.cash_out_threshold,
+                'max_clicks': self.config.max_clicks,
+                'learning_rate': self.config.learning_rate,
+                'confidence_threshold': self.config.confidence_threshold,
+                'payout_target_multiplier': self.config.payout_target_multiplier
+            },
+            'current_state': {
+                'current_aggression': self.current_aggression,
+                'current_risk_tolerance': self.current_risk_tolerance,
+                'success_rate': self.success_rate
+            }
+        }
 
 
 if __name__ == "__main__":
-    # Test Takeshi strategy
-    strategy = TakeshiStrategy(config={
-        'base_bet': 10.0,
-        'max_bet': 100.0,
-        'initial_bankroll': 1000.0
-    })
+    # Test the strategy
+    strategy = TakeshiKovacsStrategy()
     
-    print(f"Strategy: {strategy.name}")
-    print(f"Target clicks: {strategy.target_clicks}")
-    print(f"Win probability: {win_probability(strategy.target_clicks):.2%}")
-    print(f"Expected payout: {get_observed_payout(strategy.target_clicks):.2f}x")
+    # Test state
+    test_state = {
+        'board_size': 5,
+        'mine_count': 2,
+        'clicks_made': 5,
+        'current_payout': 2.5,
+        'revealed_cells': [(0, 0), (0, 1), (1, 0), (2, 2), (3, 3)]
+    }
     
-    # Simulate betting sequence with losses
-    print("\n--- Simulating loss sequence ---")
-    for i in range(5):
-        bet = strategy._calculate_bet_amount()
-        print(f"Game {i+1}: Bet ${bet:.2f} "
-              f"(losses: {strategy.consecutive_losses}, "
-              f"tranquility: {strategy.in_tranquility_mode})")
-        
-        # Simulate loss
-        result = {
-            'win': False,
-            'payout': 0.0,
-            'clicks': 3,
-            'profit': -bet,
-            'final_bankroll': strategy.bankroll - bet,
-            'bet_amount': bet
-        }
-        strategy.on_result(result)
+    # Test valid actions
+    valid_actions = [(0, 2), (1, 1), (1, 2), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)]
     
-    print(f"\nFinal state: {strategy}")
-
+    # Test action selection
+    action = strategy.select_action(test_state, valid_actions)
+    print(f"Selected action: {action}")
+    
+    # Test statistics
+    stats = strategy.get_statistics()
+    print(f"Strategy statistics: {stats}")
+    
+    # Test strategy info
+    info = strategy.get_strategy_info()
+    print(f"Strategy info: {info}")
