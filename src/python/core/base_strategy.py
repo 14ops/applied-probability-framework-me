@@ -44,13 +44,16 @@ class BaseStrategy(ABC):
         }
         
     @abstractmethod
-    def select_action(self, state: Any, valid_actions: Any) -> Any:
+    def select_action(self, state: Any, valid_actions: Any, 
+                     uncertainty_vector: Optional[List[Tuple[float, float]]] = None) -> Any:
         """
         Select an action given the current state.
         
         Args:
             state: Current state of the environment
             valid_actions: List or set of valid actions in this state
+            uncertainty_vector: Optional list of (mean, variance) tuples per cell
+                               for Bayesian uncertainty information
             
         Returns:
             The selected action (must be in valid_actions)

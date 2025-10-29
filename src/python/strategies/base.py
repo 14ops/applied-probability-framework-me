@@ -60,7 +60,8 @@ class StrategyBase(ABC):
         self.result_history: List[Dict] = []
         
     @abstractmethod
-    def decide(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def decide(self, state: Dict[str, Any], 
+               uncertainty_vector: Optional[List[Tuple[float, float]]] = None) -> Dict[str, Any]:
         """
         Make decision about bet amount and whether to click or cashout.
         
@@ -76,6 +77,8 @@ class StrategyBase(ABC):
                 - current_multiplier: Current payout multiplier
                 - bankroll: Available funds
                 - game_active: Whether game is currently active
+            uncertainty_vector: Optional list of (mean, variance) tuples per cell
+                               for Bayesian uncertainty information
                 
         Returns:
             Dictionary with decision:
@@ -270,7 +273,8 @@ class SimpleRandomStrategy(StrategyBase):
     Makes random decisions for bet sizing and click positions.
     """
     
-    def decide(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def decide(self, state: Dict[str, Any], 
+               uncertainty_vector: Optional[List[Tuple[float, float]]] = None) -> Dict[str, Any]:
         """Make random decision."""
         if not state.get('game_active', False):
             # Place a bet

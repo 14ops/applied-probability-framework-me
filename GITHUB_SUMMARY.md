@@ -31,12 +31,21 @@
 - ✅ Comprehensive documentation
 - ✅ Tournament system
 - ✅ GUI enhancements
+- ✅ RL/Bayesian/Multi-Agent scaffolds
+- ✅ CLI runner for simulations
 
 ### **Commit 2: Release Notes**
 ```
 📝 882e55f - 📝 Add comprehensive v2.0.0 release notes
 📄 2 files added
 ➕ +851 lines of documentation
+```
+
+### **Commit 3: RL/Bayesian/Multi-Agent Scaffolds**
+```
+📝 [NEW] - 🧠 feat: RL (DQN) + Bayesian + Multi-Agent scaffolds and CLI
+📦 15+ files added
+➕ +1,200 lines of new code
 ```
 
 ---
@@ -53,10 +62,40 @@ src/python/strategies/
 ├── 🎲 yuzu.py                 ⭐ 250+ lines - Controlled chaos
 ├── 🤝 aoi.py                  ⭐ 310+ lines - Cooperative sync
 ├── 🥋 kazuya.py               ⭐ 280+ lines - Dagger strike
-└── 👑 lelouch.py              ⭐ 330+ lines - Strategic mastermind
+├── 👑 lelouch.py              ⭐ 330+ lines - Strategic mastermind
+└── 🧠 drl_strategy.py         ⭐ 200+ lines - Deep RL strategy
 ```
 
-**Total Strategy Code**: ~1,800 lines
+**Total Strategy Code**: ~2,000 lines
+
+---
+
+## 🧠 RL/Bayesian/Multi-Agent Scaffolds
+
+### File Structure
+
+```
+src/python/
+├── drl/
+│   ├── 📄 __init__.py
+│   ├── 📄 drl_environment.py  ⭐ 50+ lines - RL environment
+│   ├── 📄 drl_agent.py        ⭐ 80+ lines - DQN agent
+│   └── 📄 drl_training.py     ⭐ 30+ lines - Training loop
+├── bayesian/
+│   ├── 📄 __init__.py
+│   └── 📄 bayesian_mines.py   ⭐ 25+ lines - Bayesian inference
+├── multiagent/
+│   ├── 📄 __init__.py
+│   ├── 📄 base_agent.py       ⭐ 10+ lines - Agent interface
+│   ├── 📄 blackboard.py       ⭐ 15+ lines - Communication
+│   ├── 📄 consensus.py        ⭐ 20+ lines - Decision making
+│   └── 📄 simulator.py        ⭐ 25+ lines - Team coordination
+└── cli/
+    ├── 📄 __init__.py
+    └── 📄 simulate.py         ⭐ 30+ lines - CLI runner
+```
+
+**Total Scaffold Code**: ~285 lines
 
 ---
 
