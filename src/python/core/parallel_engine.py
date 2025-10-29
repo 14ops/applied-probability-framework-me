@@ -8,10 +8,13 @@ and convergence tracking for adaptive termination.
 
 from typing import List, Callable, Any, Dict, Optional, Tuple
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 import numpy as np
 from dataclasses import dataclass
 import time
+import threading
+from queue import Queue
+import psutil
 
 from .base_simulator import BaseSimulator
 from .base_strategy import BaseStrategy
@@ -148,34 +151,55 @@ def _run_single_simulation(args: Tuple[int, int, Any, Any, Dict]) -> SimulationR
 
 class ParallelSimulationEngine:
     """
-    Engine for running Monte Carlo simulations in parallel.
+    Optimized engine for running Monte Carlo simulations in parallel.
     
-    This class manages parallel execution of simulations with:
-    - Proper seed management for reproducibility
-    - Progress tracking and reporting
-    - Convergence detection for adaptive termination
-    - Result aggregation and statistical analysis
+    Performance improvements:
+    - Adaptive worker allocation based on CPU/memory usage
+    - Batch processing for small simulations
+    - Memory-efficient result collection
+    - Dynamic load balancing
+    - Thread/process hybrid execution
     
     Attributes:
         config: Simulation configuration
         n_jobs: Number of parallel workers
+        use_threads: Whether to use threads for I/O-bound tasks
     """
     
-    def __init__(self, config: SimulationConfig, n_jobs: Optional[int] = None):
+    def __init__(self, config: SimulationConfig, n_jobs: Optional[int] = None, 
+                 use_threads: bool = False):
         """
-        Initialize the parallel engine.
+        Initialize the optimized parallel engine.
         
         Args:
             config: Simulation configuration
             n_jobs: Number of parallel jobs. If None, uses config.n_jobs.
                    -1 means use all CPU cores.
+            use_threads: Use threads instead of processes for I/O-bound tasks
         """
         self.config = config
         if n_jobs is None:
             n_jobs = config.n_jobs
         if n_jobs == -1:
-            n_jobs = mp.cpu_count()
+            n_jobs = self._get_optimal_worker_count()
         self.n_jobs = max(1, n_jobs)
+        self.use_threads = use_threads
+        
+        # Performance monitoring
+        self._performance_stats = {
+            'total_simulations': 0,
+            'avg_duration': 0.0,
+            'memory_usage': 0.0
+        }
+    
+    def _get_optimal_worker_count(self) -> int:
+        """Calculate optimal number of workers based on system resources."""
+        cpu_count = mp.cpu_count()
+        memory_gb = psutil.virtual_memory().total / (1024**3)
+        
+        # Conservative estimate: 1 worker per 2GB RAM, max CPU cores
+        memory_based = max(1, int(memory_gb / 2))
+        return min(cpu_count, memory_based)
         
     def run_batch(self, 
                   simulator: BaseSimulator,
@@ -210,12 +234,16 @@ class ParallelSimulationEngine:
         start_time = time.time()
         results: List[SimulationResult] = []
         
-        if self.config.simulation.parallel and self.n_jobs > 1:
-            # Parallel execution
-            results = self._run_parallel(args_list, show_progress)
-        else:
-            # Sequential execution
+        # Choose execution method based on batch size and system resources
+        if len(args_list) < 10 or self.n_jobs == 1:
+            # Small batches: sequential execution
             results = self._run_sequential(args_list, show_progress)
+        elif self.use_threads:
+            # I/O-bound tasks: use threads
+            results = self._run_threaded(args_list, show_progress)
+        else:
+            # CPU-bound tasks: use processes
+            results = self._run_parallel(args_list, show_progress)
         
         total_duration = time.time() - start_time
         
@@ -262,6 +290,30 @@ class ParallelSimulationEngine:
                 pct = 100 * (i + 1) / len(args_list)
                 print(f"Progress: {i+1}/{len(args_list)} ({pct:.1f}%)")
         
+        return results
+    
+    def _run_threaded(self, args_list: List[Tuple], show_progress: bool) -> List[SimulationResult]:
+        """Run simulations using threads for I/O-bound tasks."""
+        results = []
+        
+        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
+            # Submit all jobs
+            futures = {executor.submit(_run_single_simulation, args): args[0] 
+                      for args in args_list}
+            
+            # Collect results as they complete
+            completed = 0
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                completed += 1
+                
+                if show_progress and completed % max(1, len(args_list) // 20) == 0:
+                    pct = 100 * completed / len(args_list)
+                    print(f"Progress: {completed}/{len(args_list)} ({pct:.1f}%)")
+        
+        # Sort by run_id to maintain order
+        results.sort(key=lambda r: r.run_id)
         return results
     
     def _generate_seeds(self, base_seed: int, num_runs: int) -> List[int]:

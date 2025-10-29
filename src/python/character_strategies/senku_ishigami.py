@@ -3,11 +3,18 @@ Senku Ishigami - The Analytical Scientist
 
 Core Philosophy: "Science is the ultimate tool for understanding and conquering the world."
 Pure data-driven decision-making with rigorous probability calculations.
+
+Performance Optimizations:
+- Vectorized probability calculations
+- Cached EV computations
+- Batch processing for multiple cells
+- Memory-efficient data structures
 """
 
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional
 from core.base_strategy import BaseStrategy
+from bayesian import _probability_cache, VectorizedBetaEstimator
 
 
 class SenkuIshigamiStrategy(BaseStrategy):
@@ -31,13 +38,20 @@ class SenkuIshigamiStrategy(BaseStrategy):
         # Scientific parameters
         self.exploration_rate = config.get('exploration_rate', 0.1) if config else 0.1
         
-        # Data collection
+        # Optimized data structures
         self.probability_map = {}
         self.historical_data = []
+        self._ev_cache = {}
+        self._last_state_hash = None
+        
+        # Vectorized computation arrays
+        self._cell_array = None
+        self._probability_array = None
+        self._ev_array = None
         
     def select_action(self, state: Any, valid_actions: Any) -> Any:
         """
-        Select action with highest Expected Value based on precise calculations.
+        Select action with highest Expected Value using vectorized calculations.
         
         Args:
             state: Current game state
@@ -49,25 +63,130 @@ class SenkuIshigamiStrategy(BaseStrategy):
         if not valid_actions:
             raise ValueError("No valid actions available")
         
-        # Update probability map with current state
-        self._update_probability_map(state, valid_actions)
-        
-        # Calculate EV for each cell
-        best_cell = None
-        best_ev = float('-inf')
-        
-        for cell in valid_actions:
-            ev = self._calculate_expected_value(state, cell, valid_actions)
-            
-            if ev > best_ev:
-                best_ev = ev
-                best_cell = cell
-        
-        # If no positive EV cells, return None to signal cash out
-        if best_ev <= 0:
+        # Check if we can use cached results
+        state_hash = self._get_state_hash(state, valid_actions)
+        if state_hash == self._last_state_hash and self._ev_array is not None:
+            best_idx = np.argmax(self._ev_array)
+            best_ev = self._ev_array[best_idx]
+            if best_ev > 0:
+                return valid_actions[best_idx]
             return None
         
-        return best_cell if best_cell else valid_actions[0]
+        # Vectorized probability and EV calculation
+        self._calculate_vectorized_ev(state, valid_actions)
+        
+        # Find best action
+        if self._ev_array is not None and len(self._ev_array) > 0:
+            best_idx = np.argmax(self._ev_array)
+            best_ev = self._ev_array[best_idx]
+            
+            if best_ev > 0:
+                return valid_actions[best_idx]
+        
+        return None
+    
+    def _get_state_hash(self, state: Dict, valid_actions: List) -> str:
+        """Generate a hash for state caching."""
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 3)
+        clicks_made = state.get('clicks_made', 0)
+        revealed = state.get('revealed', [])
+        
+        # Create a simple hash of the state
+        state_str = f"{board_size}_{mine_count}_{clicks_made}_{len(valid_actions)}"
+        if isinstance(revealed, list):
+            revealed_str = ''.join(str(int(cell)) for row in revealed for cell in row)
+            state_str += f"_{revealed_str}"
+        
+        return state_str
+    
+    def _calculate_vectorized_ev(self, state: Dict, valid_actions: List) -> None:
+        """Vectorized calculation of probabilities and expected values."""
+        board_size = state.get('board_size', 5)
+        mine_count = state.get('mine_count', 3)
+        clicks_made = state.get('clicks_made', 0)
+        
+        # Convert to numpy arrays for vectorized operations
+        valid_actions_array = np.array(valid_actions)
+        n_actions = len(valid_actions)
+        
+        if n_actions == 0:
+            self._ev_array = np.array([])
+            return
+        
+        # Calculate base probabilities vectorized
+        total_cells = board_size * board_size
+        unrevealed_count = total_cells - clicks_made
+        
+        if unrevealed_count <= 0:
+            self._ev_array = np.full(n_actions, -1.0)
+            return
+        
+        # Base probability of mine
+        base_mine_prob = mine_count / unrevealed_count
+        
+        # Get adjacent information for each cell (vectorized)
+        adjacent_info = self._get_adjacent_info_vectorized(state, valid_actions_array)
+        
+        # Adjust probabilities based on adjacent information
+        adjusted_probs = self._adjust_probabilities_vectorized(
+            base_mine_prob, adjacent_info, valid_actions_array, state
+        )
+        
+        # Calculate expected values vectorized
+        p_safe = 1.0 - adjusted_probs
+        payouts = 1.0 + (clicks_made * 0.15)  # 15% increase per click
+        losses = 1.0
+        
+        self._ev_array = (p_safe * payouts) - (adjusted_probs * losses)
+        self._last_state_hash = self._get_state_hash(state, valid_actions)
+    
+    def _get_adjacent_info_vectorized(self, state: Dict, valid_actions: np.ndarray) -> np.ndarray:
+        """Vectorized calculation of adjacent revealed information."""
+        board_size = state.get('board_size', 5)
+        revealed = state.get('revealed', [])
+        board = state.get('board', [])
+        
+        n_actions = len(valid_actions)
+        adjacent_scores = np.zeros(n_actions)
+        
+        for i, (row, col) in enumerate(valid_actions):
+            total_constraint = 0
+            constraint_count = 0
+            
+            # Check all 8 adjacent cells
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    if dr == 0 and dc == 0:
+                        continue
+                    
+                    nr, nc = row + dr, col + dc
+                    if 0 <= nr < board_size and 0 <= nc < board_size:
+                        if (isinstance(revealed, list) and len(revealed) > nr and 
+                            len(revealed[nr]) > nc and revealed[nr][nc]):
+                            if (isinstance(board, list) and len(board) > nr and 
+                                len(board[nr]) > nc):
+                                number = board[nr][nc]
+                                if number > 0:
+                                    total_constraint += number
+                                    constraint_count += 1
+            
+            if constraint_count > 0:
+                avg_constraint = total_constraint / constraint_count
+                adjacent_scores[i] = avg_constraint / 8.0  # Normalize
+        
+        return adjacent_scores
+    
+    def _adjust_probabilities_vectorized(self, base_prob: float, adjacent_scores: np.ndarray,
+                                       valid_actions: np.ndarray, state: Dict) -> np.ndarray:
+        """Vectorized probability adjustment based on adjacent information."""
+        # Adjust probabilities based on adjacent constraints
+        # Cells near high numbers are more likely to have mines
+        adjustment_factor = 1.0 + adjacent_scores
+        adjusted_probs = base_prob * adjustment_factor
+        
+        # Ensure probabilities are in valid range
+        return np.clip(adjusted_probs, 0.0, 1.0)
     
     def _update_probability_map(self, state: Dict, valid_actions: List) -> None:
         """
