@@ -41,6 +41,31 @@ target/
 logs/
 sessions.jsonl
 
+# Large binary files
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.exe
+*.dll
+*.pyd
+*.dylib
+*.so
+
+# Results and data files
+results/*.json
+strategy_stats.json
+src/python/*_config.json
+src/python/*_stats.json
+
+# Documentation assets (too large for git)
+# Keep optimized versions in releases or use external hosting
+docs/visualizations/*.png
+docs/guides/*.pdf
+
+# Keep example data
+data/demo_memory.json
+
 # AI Memory System (generated)
 ai_memory.json
 ai_memory_*.json
