@@ -33,6 +33,14 @@ from strategies import (
     KazuyaStrategy,
     LelouchStrategy,
 )
+
+# Import DRL strategy with fallback
+try:
+    from strategies.drl_strategy import DRLStrategy
+    DRL_AVAILABLE = True
+except ImportError:
+    DRL_AVAILABLE = False
+    print("Warning: DRL strategy not available (torch may be missing)")
 from game.math import win_probability, expected_value, get_observed_payout
 
 
@@ -202,6 +210,15 @@ def run_tournament(num_games: int = 50000, seed: int = 42,
             'initial_bankroll': 1000.0
         }),
     }
+    
+    # Add DRL strategy if available
+    if DRL_AVAILABLE:
+        strategies['DRLStrategy'] = DRLStrategy(config={
+            'base_bet': 10.0,
+            'n_cells': 25,
+            'episodes_trained': 1000,  # Reduced for faster tournament
+            'initial_bankroll': 1000.0
+        })
     
     results = {}
     simulator = MinesGameSimulator()

@@ -5,6 +5,13 @@ from bayesian import BetaEstimator, fractional_kelly
 from strategies import BasicStrategy  # Assuming BasicStrategy is now updated
 
 # Import other strategies as they are updated with Bayesian/Kelly logic
+# Import DRL strategy with fallback
+try:
+    from strategies.drl_strategy import DRLStrategy
+    DRL_AVAILABLE = True
+except ImportError:
+    DRL_AVAILABLE = False
+    print("Warning: DRL strategy not available (torch may be missing)")
 
 
 # Placeholder for individual strategy classes (e.g., BasicStrategy, TakeshiStrategy, etc.)

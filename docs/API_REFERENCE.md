@@ -13,6 +13,7 @@ Complete API documentation for the Applied Probability Framework.
   - [parallel_engine](#parallel_engine)
   - [reproducibility](#reproducibility)
 - [CLI](#cli)
+- [RL / Bayesian / Multi-Agent Modules (scaffold)](#rl--bayesian--multi-agent-modules-scaffold)
 
 ---
 
@@ -475,6 +476,235 @@ apf analyze RESULTS_FILE [OPTIONS]
 
 Options:
   -d, --detailed     Show detailed information
+```
+
+---
+
+## RL / Bayesian / Multi-Agent Modules (scaffold)
+
+### Deep Reinforcement Learning (DRL)
+
+#### `MinesEnv`
+
+RL environment wrapper for mines game simulation.
+
+```python
+class MinesEnv:
+    def __init__(self, n_cells: int = 25)
+    def reset(self) -> np.ndarray
+    def step(self, action: int) -> StepResult
+    def valid_actions(self) -> List[int]
+    def encode_state(self) -> np.ndarray
+```
+
+**Parameters:**
+- `n_cells` (int): Number of cells in the mines grid (default: 25 for 5x5)
+
+**Methods:**
+
+##### `reset() -> np.ndarray`
+Reset environment to initial state.
+
+**Returns:**
+- Initial state vector (n_cells + 4 meta features)
+
+##### `step(action) -> StepResult`
+Execute action and return result.
+
+**Parameters:**
+- `action` (int): Action to take (0 to n_cells-1 for clicks, n_cells for cashout)
+
+**Returns:**
+- `StepResult` with next_state, reward, done, and info
+
+#### `DQNAgent`
+
+Deep Q-Network agent for learning optimal policies.
+
+```python
+class DQNAgent:
+    def __init__(self, state_dim: int, action_dim: int, gamma=0.99, lr=1e-3, 
+                 eps_start=1.0, eps_end=0.05, eps_decay=20000)
+    def act(self, state, valid_mask=None)
+    def learn(self, batch_size=256, target_update=500)
+    def epsilon(self)
+```
+
+**Parameters:**
+- `state_dim` (int): Dimension of state space
+- `action_dim` (int): Number of possible actions
+- `gamma` (float): Discount factor (default: 0.99)
+- `lr` (float): Learning rate (default: 1e-3)
+- `eps_start` (float): Initial exploration rate (default: 1.0)
+- `eps_end` (float): Final exploration rate (default: 0.05)
+- `eps_decay` (int): Exploration decay steps (default: 20000)
+
+**Methods:**
+
+##### `act(state, valid_mask=None) -> int`
+Select action using epsilon-greedy policy.
+
+**Parameters:**
+- `state`: Current state vector
+- `valid_mask`: Optional mask for valid actions
+
+**Returns:**
+- Selected action index
+
+##### `learn(batch_size=256, target_update=500) -> None`
+Update Q-network using experience replay.
+
+**Parameters:**
+- `batch_size` (int): Size of training batch
+- `target_update` (int): Steps between target network updates
+
+#### `train_dqn`
+
+Training function for DQN agent.
+
+```python
+def train_dqn(episodes=2000, n_cells=25, log_every=100) -> DQNAgent
+```
+
+**Parameters:**
+- `episodes` (int): Number of training episodes
+- `n_cells` (int): Number of cells in environment
+- `log_every` (int): Logging frequency
+
+**Returns:**
+- Trained DQNAgent instance
+
+---
+
+### Bayesian Inference
+
+#### `BayesianMineModel`
+
+Bayesian model for mine probability inference.
+
+```python
+class BayesianMineModel:
+    def __init__(self, n_cells=25)
+    def infer_safety(self, visible: np.ndarray) -> List[Tuple[float, float]]
+```
+
+**Parameters:**
+- `n_cells` (int): Number of cells in the grid
+
+**Methods:**
+
+##### `infer_safety(visible) -> List[Tuple[float, float]]`
+Infer safety probabilities for each cell.
+
+**Parameters:**
+- `visible` (np.ndarray): Array indicating revealed cells
+
+**Returns:**
+- List of (mean, variance) tuples for each cell's safety probability
+
+---
+
+### Multi-Agent Coordination
+
+#### `BaseAgent`
+
+Abstract base class for multi-agent system participants.
+
+```python
+class BaseAgent(ABC):
+    @abstractmethod
+    def propose(self, state) -> Dict[str, Any]
+```
+
+**Methods:**
+
+##### `propose(state) -> Dict[str, Any]`
+Propose action with confidence and reasoning.
+
+**Parameters:**
+- `state`: Current environment state
+
+**Returns:**
+- Dictionary with keys: 'action', 'confidence', 'reason'
+
+#### `Blackboard`
+
+Shared information board for multi-agent communication.
+
+```python
+class Blackboard:
+    def __init__(self)
+    def post_obs(self, obs: Dict[str, Any])
+    def post_proposal(self, prop: Dict[str, Any])
+    def clear(self)
+```
+
+**Methods:**
+
+##### `post_obs(obs) -> None`
+Post observation to blackboard.
+
+##### `post_proposal(prop) -> None`
+Post action proposal to blackboard.
+
+##### `clear() -> None`
+Clear all observations and proposals.
+
+#### `majority_vote`
+
+Consensus mechanism for multi-agent decisions.
+
+```python
+def majority_vote(proposals: List[Dict[str, Any]]) -> Dict[str, Any]
+```
+
+**Parameters:**
+- `proposals`: List of agent proposals
+
+**Returns:**
+- Consensus decision with action, confidence, and reason
+
+#### `TeamSimulator`
+
+Simulator for multi-agent team coordination.
+
+```python
+class TeamSimulator:
+    def __init__(self, env, agents: List)
+    def play_round(self)
+```
+
+**Parameters:**
+- `env`: Environment instance
+- `agents`: List of agent instances
+
+**Methods:**
+
+##### `play_round() -> bool`
+Run one round of multi-agent coordination.
+
+**Returns:**
+- True if round completed successfully
+
+---
+
+### CLI Integration
+
+#### `simulate` Command
+
+Command-line interface for running RL simulations.
+
+```bash
+python -m src.python.cli.simulate [OPTIONS]
+
+Options:
+  --episodes N    Number of training episodes (default: 2000)
+  --cells N       Number of cells in grid (default: 25)
+```
+
+**Example:**
+```bash
+python -m src.python.cli.simulate --episodes 1000 --cells 25
 ```
 
 ---
