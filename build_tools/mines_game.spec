@@ -9,7 +9,15 @@ import sys
 from pathlib import Path
 
 # Paths
-spec_dir = Path(SPECPATH)
+# Get the directory where this spec file is located
+try:
+    # When running as a spec file, __file__ is available
+    spec_dir = Path(__file__).parent
+except NameError:
+    # Fallback: assume running from build_tools directory
+    spec_dir = Path.cwd()
+    if spec_dir.name != 'build_tools':
+        spec_dir = spec_dir / 'build_tools'
 project_root = spec_dir.parent
 src_python = project_root / 'src' / 'python'
 

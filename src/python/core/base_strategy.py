@@ -6,7 +6,7 @@ the framework to make decisions within simulations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 
