@@ -1,0 +1,97 @@
+{
+  "mines_bot": {
+    "enabled": true,
+    "board_size": 5,
+    "mine_count": 2,
+    "total_rounds": 10000,
+    "initial_bankroll": 1000.0,
+    "base_bet": 10.0,
+    "characters": {
+      "takeshi": {
+        "risk_factor": 0.8,
+        "recovery_factor": 0.1,
+        "cashout_threshold": 2.5,
+        "aggression_factor": 0.7,
+        "weight": 1.0,
+        "learning_rate": 0.01
+      },
+      "kazuya": {
+        "risk_factor": 0.2,
+        "recovery_factor": 0.05,
+        "cashout_threshold": 1.5,
+        "aggression_factor": 0.3,
+        "weight": 1.0,
+        "learning_rate": 0.01
+      },
+      "lelouch": {
+        "risk_factor": 0.6,
+        "recovery_factor": 0.08,
+        "cashout_threshold": 2.0,
+        "aggression_factor": 0.5,
+        "weight": 1.0,
+        "learning_rate": 0.01
+      },
+      "senku": {
+        "risk_factor": 0.5,
+        "recovery_factor": 0.06,
+        "cashout_threshold": 2.2,
+        "aggression_factor": 0.4,
+        "weight": 1.0,
+        "learning_rate": 0.01
+      },
+      "yuzu": {
+        "risk_factor": 0.4,
+        "recovery_factor": 0.07,
+        "cashout_threshold": 1.8,
+        "aggression_factor": 0.45,
+        "weight": 1.0,
+        "learning_rate": 0.01
+      }
+    },
+    "stop_loss": 0.5,
+    "win_target": 2.0
+  },
+  "trading_bot": {
+    "enabled": true,
+    "mode": "crypto",
+    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+    "lookback_days": 365,
+    "features": {
+      "moving_average_7": true,
+      "moving_average_14": true,
+      "moving_average_30": true,
+      "rsi": true,
+      "rsi_period": 14,
+      "macd": true,
+      "volume_ma": true,
+      "volatility": true
+    },
+    "model": {
+      "type": "random_forest",
+      "n_estimators": 100,
+      "max_depth": 10,
+      "min_samples_split": 5
+    },
+    "initial_capital": 10000.0,
+    "position_size_pct": 0.1,
+    "stop_loss_pct": 0.02,
+    "take_profit_pct": 0.04,
+    "transaction_fee_pct": 0.001
+  },
+  "logging": {
+    "log_dir": "logs",
+    "save_models": true,
+    "models_dir": "models",
+    "results_dir": "results",
+    "log_level": "INFO",
+    "save_checkpoints": true,
+    "checkpoint_frequency": 1000
+  },
+  "visualization": {
+    "generate_dashboard": true,
+    "dashboard_output": "dashboard.html",
+    "plot_profit_curves": true,
+    "plot_win_rates": true
+  }
+}
+
