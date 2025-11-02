@@ -1,17 +1,29 @@
-# Applied Probability Framework for High-RTP Games
+# Applied Probability & Automation Framework for Stock AI
 
-A comprehensive framework for analyzing, optimizing, and automating high-RTP (Return to Player) games using advanced probability theory, machine learning, and strategic decision-making algorithms.
+A local-first research environment for testing, training, and deploying AI-driven stock-market strategies.
+
+## 🚀 Objectives
+
+- Build and test data-driven strategies on real stock/crypto data.
+- Use reinforcement and probabilistic methods to improve performance over time.
+- Operate locally (no cloud dependencies).
+- Support backtesting, paper trading, and live execution through APIs (e.g., Alpaca).
+
+---
 
 ## 🎯 Overview
 
-The Applied Probability Framework is a sophisticated system designed to maximize returns in high-RTP games through:
+This project transforms probabilistic-strategy research into a **local stock-market automation lab**.  
+
+It began as a study of expected-value systems and now focuses on **AI-assisted portfolio and trading-strategy optimization**.
+
+The framework provides:
 
 - **Advanced Probability Analysis**: Bayesian inference, Monte Carlo simulations, and statistical modeling
 - **Character-Based Strategies**: Multiple AI personalities with distinct risk profiles and decision-making patterns
 - **Deep Reinforcement Learning**: DRL agents that learn optimal strategies through interaction
-- **Human Behavior Simulation**: GAN-based systems that generate realistic human-like gameplay patterns
 - **Real-time Risk Assessment**: Dynamic risk management and threshold adaptation
-- **Comprehensive Testing**: Extensive simulation and validation capabilities
+- **Comprehensive Testing**: Extensive backtesting and validation capabilities
 
 ## 🏗️ Architecture
 
