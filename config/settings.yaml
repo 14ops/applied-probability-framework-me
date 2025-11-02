@@ -1,0 +1,47 @@
+# Stock AI Framework Configuration
+
+# Backtest parameters
+backtest:
+  starting_cash: 10000.0
+  commission: 0.001  # 0.1% per trade
+  max_position_pct: 1.0
+  slippage: 0.0005  # 0.05%
+  start_date: "2022-01-01"
+  end_date: "2023-12-31"
+
+# Symbols to backtest
+tickers:
+  - AAPL
+  - MSFT
+  - NVDA
+  - SPY
+  - TSLA
+
+# Strategy configuration
+strategy:
+  name: "ma_crossover"  # Options: ma_crossover, rsi_filter, bollinger_reversion, ensemble_vote
+  params:
+    fast: 10
+    slow: 30
+    rsi_threshold: 55
+    bollinger_window: 20
+    bollinger_std: 2
+
+# Data source
+data:
+  source: "yfinance"  # yfinance or alpaca
+  interval: "1d"
+
+# Results output
+results:
+  directory: "results"
+  save_equity: true
+  save_trades: true
+
+# Live trading (paper/live)
+live:
+  enabled: false
+  broker: "alpaca"  # alpaca, interactive_brokers, etc.
+  paper: true
+  check_interval: 300  # seconds between checks
+
