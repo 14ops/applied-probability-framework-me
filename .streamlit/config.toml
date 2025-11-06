@@ -1,0 +1,14 @@
+# Streamlit Configuration
+# Suppress warnings and improve performance
+
+[logger]
+level = "error"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+

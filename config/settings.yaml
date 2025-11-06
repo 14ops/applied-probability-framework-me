@@ -40,8 +40,15 @@ results:
 
 # Live trading (paper/live)
 live:
-  enabled: false
+  enabled: true
   broker: "alpaca"  # alpaca, interactive_brokers, etc.
   paper: true
   check_interval: 300  # seconds between checks
+  allow_after_hours: true  # Set to true to allow trading outside market hours (for testing)
+
+# Risk management
+risk:
+  max_drawdown_pct: 5.0  # Stop trading if drawdown exceeds this percentage
+  max_consecutive_losses: 5  # Stop trading after N consecutive losing trades
+  kill_switch_file: "stop.txt"  # Create this file to immediately stop trading
 

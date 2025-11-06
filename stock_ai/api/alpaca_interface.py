@@ -12,7 +12,7 @@ import yaml
 try:
     import alpaca_trade_api as tradeapi
 except ImportError:
-    logger.warning("alpaca_trade_api not installed. Install with: pip install alpaca-trade-api")
+    # Silently set to None - warning will be shown only when actually trying to use it
     tradeapi = None
 
 
@@ -38,12 +38,16 @@ class AlpacaInterface:
                 secrets = yaml.safe_load(f)
             
             alpaca_config = secrets.get('alpaca', {})
-            self.key_id = alpaca_config.get('key_id')
-            self.secret_key = alpaca_config.get('secret_key')
-            self.base_url = alpaca_config.get('base_url', 'https://paper-api.alpaca.markets')
+            self.key_id = alpaca_config.get('key_id', '').strip()
+            self.secret_key = alpaca_config.get('secret_key', '').strip()
+            self.base_url = alpaca_config.get('base_url', 'https://paper-api.alpaca.markets').strip()
             
             if not self.key_id or not self.secret_key:
                 raise ValueError("Alpaca credentials not found in config file")
+            
+            # Validate key formats
+            if len(self.key_id) < 20 or len(self.secret_key) < 40:
+                logger.warning(f"API key lengths seem unusual - Key ID: {len(self.key_id)}, Secret: {len(self.secret_key)}")
             
         except FileNotFoundError:
             logger.error(f"Secrets file not found: {config_path}")
@@ -61,8 +65,16 @@ class AlpacaInterface:
         try:
             account = self.api.get_account()
             logger.info(f"Connected to Alpaca ({'Paper' if 'paper' in self.base_url else 'Live'} Trading)")
+            logger.info(f"Account status: Portfolio Value=${float(account.portfolio_value):,.2f}")
         except Exception as e:
-            logger.error(f"Failed to connect to Alpaca: {e}")
+            error_msg = str(e)
+            logger.error(f"Failed to connect to Alpaca: {error_msg}")
+            if "unauthorized" in error_msg.lower():
+                logger.error("Authentication failed. Please verify:")
+                logger.error("  1. API keys are correct in config/secrets.yaml")
+                logger.error("  2. Keys are for paper trading (not live trading)")
+                logger.error("  3. Keys haven't expired (check Alpaca dashboard)")
+                logger.error(f"  4. Base URL is correct: {self.base_url}")
             raise
     
     def get_account(self) -> Dict:
@@ -131,7 +143,8 @@ class AlpacaInterface:
         order_type: str = 'market',
         time_in_force: str = 'day',
         limit_price: Optional[float] = None,
-        stop_price: Optional[float] = None
+        stop_price: Optional[float] = None,
+        extended_hours: bool = False,
     ) -> Optional[str]:
         """
         Submit an order.
@@ -155,7 +168,8 @@ class AlpacaInterface:
                     qty=qty,
                     side=side,
                     type=order_type,
-                    time_in_force=time_in_force
+                    time_in_force=time_in_force,
+                    extended_hours=extended_hours
                 )
             elif order_type == 'limit':
                 if limit_price is None:
@@ -166,7 +180,8 @@ class AlpacaInterface:
                     side=side,
                     type=order_type,
                     time_in_force=time_in_force,
-                    limit_price=limit_price
+                    limit_price=limit_price,
+                    extended_hours=extended_hours
                 )
             elif order_type == 'stop':
                 if stop_price is None:
@@ -177,7 +192,8 @@ class AlpacaInterface:
                     side=side,
                     type=order_type,
                     time_in_force=time_in_force,
-                    stop_price=stop_price
+                    stop_price=stop_price,
+                    extended_hours=extended_hours
                 )
             else:
                 raise ValueError(f"Unsupported order_type: {order_type}")
@@ -188,6 +204,41 @@ class AlpacaInterface:
         except Exception as e:
             logger.error(f"Error submitting order: {e}")
             return None
+
+    def get_order(self, order_id: str) -> Optional[Dict]:
+        """Get a single order by ID."""
+        try:
+            order = self.api.get_order(order_id)
+            return {
+                'id': order.id,
+                'symbol': order.symbol,
+                'qty': int(order.qty),
+                'filled_qty': int(order.filled_qty),
+                'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None,
+                'side': order.side,
+                'type': order.type,
+                'status': order.status,
+                'submitted_at': order.submitted_at,
+                'filled_at': order.filled_at,
+            }
+        except Exception as e:
+            logger.error(f"Error getting order {order_id}: {e}")
+            return None
+
+    def wait_for_fill(self, order_id: str, timeout_seconds: int = 90, poll_interval: float = 2.0) -> Optional[Dict]:
+        """Poll order status until it is filled or timeout."""
+        import time as _time
+        deadline = _time.time() + timeout_seconds
+        while _time.time() < deadline:
+            info = self.get_order(order_id)
+            if not info:
+                return None
+            if info.get('status') in ('filled', 'partially_filled'):
+                return info
+            if info.get('status') in ('canceled', 'rejected', 'expired'): 
+                return info
+            _time.sleep(poll_interval)
+        return self.get_order(order_id)
     
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order."""
@@ -199,12 +250,13 @@ class AlpacaInterface:
             logger.error(f"Error cancelling order: {e}")
             return False
     
-    def get_orders(self, status: str = 'all') -> List[Dict]:
+    def get_orders(self, status: str = 'all', limit: int = 100) -> List[Dict]:
         """Get orders by status."""
         try:
-            orders = self.api.list_orders(status=status, limit=100)
+            orders = self.api.list_orders(status=status, limit=limit)
             return [
                 {
+                    'id': order.id,
                     'order_id': order.id,
                     'symbol': order.symbol,
                     'qty': int(order.qty),
@@ -215,6 +267,7 @@ class AlpacaInterface:
                     'status': order.status,
                     'time_in_force': order.time_in_force,
                     'submitted_at': order.submitted_at,
+                    'created_at': order.submitted_at,  # Alias for compatibility
                     'filled_at': order.filled_at
                 }
                 for order in orders
@@ -268,6 +321,69 @@ class AlpacaInterface:
         except Exception as e:
             logger.error(f"Error closing all positions: {e}")
             return False
+    
+    def get_quote(self, symbol: str) -> Optional[Dict]:
+        """
+        Get current quote (bid/ask) for a symbol.
+        
+        Returns:
+            Dict with bid_price, ask_price, bid_size, ask_size, timestamp
+        """
+        try:
+            quote = self.api.get_latest_quote(symbol)
+            if quote:
+                # Some SDK versions expose sizes with different attribute names; keep optional and robust
+                bp = getattr(quote, 'bp', None)
+                ap = getattr(quote, 'ap', None)
+                bs = getattr(quote, 'bs', None)
+                # 'as' is reserved, some versions use 'as_', others may omit
+                ask_size_attr = 'as_'
+                asz = getattr(quote, ask_size_attr, None)
+                return {
+                    'symbol': symbol,
+                    'bid_price': float(bp) if bp is not None else None,
+                    'ask_price': float(ap) if ap is not None else None,
+                    'bid_size': int(bs) if bs is not None else None,
+                    'ask_size': int(asz) if asz is not None else None,
+                    'timestamp': getattr(quote, 't', None)
+                }
+            return None
+        except Exception as e:
+            logger.debug(f"Could not get quote for {symbol}: {e}")
+            return None
+    
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Get current price for a symbol.
+        
+        Tries multiple methods:
+        1. From position if we have one
+        2. Latest trade from API
+        3. Latest bar (1-minute)
+        """
+        try:
+            # Try to get from position first (most accurate)
+            position = self.get_position(symbol)
+            if position:
+                return position['current_price']
+            
+            # Try to get latest trade
+            try:
+                latest_trade = self.api.get_latest_trade(symbol)
+                if latest_trade and latest_trade.price:
+                    return float(latest_trade.price)
+            except:
+                pass
+            
+            # Otherwise get latest bar
+            bars = self.get_bars([symbol], '1Min', limit=1)
+            if bars and symbol in bars and len(bars[symbol]) > 0:
+                return bars[symbol][-1]['close']
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error getting price for {symbol}: {e}")
+            return None
     
     def get_clock(self) -> Dict:
         """Get market clock information."""

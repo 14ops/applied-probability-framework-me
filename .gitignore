@@ -40,6 +40,7 @@ target/
 *.zip
 logs/
 sessions.jsonl
+run_state/
 
 # Large binary files
 *.png
@@ -85,3 +86,16 @@ CLEANUP_*.md
 # Output files
 pylint_output.txt
 *_output.txt
+
+# Secrets and environment (do not commit!)
+config/secrets.yaml
+config/*.local.yaml
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Results and generated data
+results/
+results/*.csv
+results/*.json
+stop.txt

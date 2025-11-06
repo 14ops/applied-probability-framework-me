@@ -16,6 +16,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Setup logging with rotation
+try:
+    from utils.logging_setup import setup_logging
+    setup_logging(log_level="INFO", rotation="10 MB", retention="30 days")
+except ImportError:
+    # Fallback if logging setup not available
+    pass
+
 from backtests.backtest_runner import run_backtest
 from backtests.data_loader import load_ohlcv
 from strategies import ma_crossover, rsi_filter, bollinger_reversion
@@ -375,6 +383,24 @@ def run_optimization(
         
         # Save best parameters
         save_best_params(results_df, f"config/best_params_{strategy}.yaml")
+        
+        # Save to optimization summary (append mode)
+        summary_path = Path(output_dir) / "optimization_summary.csv"
+        if summary_path.exists():
+            # Append to existing summary
+            existing_df = pd.read_csv(summary_path)
+            combined_df = pd.concat([existing_df, results_df], ignore_index=True)
+            # Remove duplicates based on symbol+strategy+params combination
+            combined_df = combined_df.drop_duplicates(
+                subset=[col for col in combined_df.columns if col not in ['total_return_pct', 'cagr_pct', 'sharpe_ratio', 'max_drawdown_pct', 'num_trades', 'win_rate_pct']],
+                keep='last'
+            )
+            combined_df = combined_df.sort_values('sharpe_ratio', ascending=False)
+            combined_df.to_csv(summary_path, index=False)
+        else:
+            # Create new summary file
+            results_df.to_csv(summary_path, index=False)
+        logger.info(f"Updated optimization summary: {summary_path}")
     
     return results_df
 

@@ -13,9 +13,18 @@ from datetime import datetime, timedelta
 from loguru import logger
 import yaml
 import sys
+import os
 
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Setup logging with rotation
+try:
+    from utils.logging_setup import setup_live_trading_logging
+    setup_live_trading_logging()
+except ImportError:
+    # Fallback if logging setup not available
+    pass
 
 from api.alpaca_interface import AlpacaInterface
 from backtests.data_loader import load_ohlcv
@@ -60,6 +69,7 @@ class LiveTradingRunner:
     - Automatic order execution based on signals
     - Risk management and position sizing
     - Portfolio tracking and logging
+    - Kill switch and safety guards
     """
     
     def __init__(self, config: Dict):
@@ -78,12 +88,24 @@ class LiveTradingRunner:
         self.max_position_size = config.get('backtest', {}).get('max_position_pct', 1.0)
         self.commission = config.get('backtest', {}).get('commission', 0.001)
         
+        # Risk management parameters
+        risk_config = config.get('risk', {})
+        self.max_drawdown_pct = risk_config.get('max_drawdown_pct', 5.0)
+        self.max_consecutive_losses = risk_config.get('max_consecutive_losses', 5)
+        self.kill_switch_file = risk_config.get('kill_switch_file', 'stop.txt')
+        self.initial_equity = None
+        
         # Portfolio tracking
         self.equity_history = []
         self.trade_log = []
         self.last_check = None
+        self.consecutive_losses = 0
+        self.last_trade_was_loss = False
+        self.max_equity_seen = None
+        self.trading_enabled = True
         
         logger.info(f"Initialized Live Trading Runner with strategy: {self.strategy_name}")
+        logger.info(f"Risk limits: max_drawdown={self.max_drawdown_pct}%, max_losses={self.max_consecutive_losses}")
     
     def is_market_open(self) -> bool:
         """Check if market is currently open."""
@@ -91,22 +113,8 @@ class LiveTradingRunner:
         return clock.get('is_open', False)
     
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current price for a symbol."""
-        try:
-            # Try to get from position first
-            position = self.alpaca.get_position(symbol)
-            if position:
-                return position['current_price']
-            
-            # Otherwise get latest bar
-            bars = self.alpaca.get_bars([symbol], '1Min', limit=1)
-            if bars and symbol in bars and len(bars[symbol]) > 0:
-                return bars[symbol][-1]['close']
-            
-            return None
-        except Exception as e:
-            logger.error(f"Error getting price for {symbol}: {e}")
-            return None
+        """Get current price for a symbol (delegates to AlpacaInterface)."""
+        return self.alpaca.get_current_price(symbol)
     
     def calculate_position_size(self, symbol: str, signal: int) -> int:
         """
@@ -160,8 +168,16 @@ class LiveTradingRunner:
                 logger.warning(f"No data for {symbol}")
                 return pd.DataFrame()
             
-            # Generate signals using strategy
-            df = self.strategy_func(df, **self.strategy_params)
+            # Generate signals using strategy - filter params to only include valid ones
+            import inspect
+            sig = inspect.signature(self.strategy_func)
+            valid_params = {k: v for k, v in self.strategy_params.items() if k in sig.parameters}
+            
+            if len(valid_params) < len(self.strategy_params):
+                invalid = set(self.strategy_params.keys()) - set(valid_params.keys())
+                logger.debug(f"{symbol}: Filtered out invalid params: {invalid}")
+            
+            df = self.strategy_func(df, **valid_params)
             
             return df
             
@@ -196,6 +212,15 @@ class LiveTradingRunner:
             
             logger.info(f"{symbol}: signal={latest_signal:.0f}, has_position={has_position}, should_buy={should_buy}, should_sell={should_sell}")
             
+            # Additional logging for debugging
+            if not should_buy and not should_sell:
+                if has_position and latest_signal > 0:
+                    logger.debug(f"{symbol}: Signal is BUY but already have position (holding)")
+                elif not has_position and latest_signal < 0:
+                    logger.debug(f"{symbol}: Signal is SELL but no position (waiting)")
+                elif latest_signal == 0:
+                    logger.debug(f"{symbol}: Signal is HOLD (no action)")
+            
             return should_buy, should_sell
             
         except Exception as e:
@@ -204,7 +229,18 @@ class LiveTradingRunner:
     
     def execute_trade(self, symbol: str, action: str, qty: int) -> Optional[str]:
         """Execute a trade order."""
+        # Check risk limits before trading
+        should_stop, reason = self.check_risk_limits()
+        if should_stop:
+            logger.warning(f"Trade execution blocked: {reason}")
+            return None
+        
         try:
+            price = self.get_current_price(symbol)
+            if not price:
+                logger.error(f"Could not get price for {symbol}, aborting trade")
+                return None
+            
             if action == 'buy':
                 order_id = self.alpaca.submit_order(symbol, qty, side='buy', order_type='market')
             elif action == 'sell':
@@ -218,16 +254,21 @@ class LiveTradingRunner:
                 return None
             
             if order_id:
-                logger.info(f"Executed {action} order for {qty} shares of {symbol}")
+                logger.info(f"Executed {action} order for {qty} shares of {symbol} @ ${price:.2f}")
                 
-                # Log trade
-                self.trade_log.append({
+                # Log trade with full details
+                trade_entry = {
                     'timestamp': datetime.now(),
                     'symbol': symbol,
                     'action': action,
                     'qty': qty,
+                    'price': price,
                     'order_id': order_id
-                })
+                }
+                self.trade_log.append(trade_entry)
+                
+                # Update trade statistics
+                self.update_trade_stats(symbol, action, price, qty)
             
             return order_id
             
@@ -241,23 +282,106 @@ class LiveTradingRunner:
             account = self.alpaca.get_account()
             equity = account.get('portfolio_value', 0)
             
+            # Initialize or update max equity
+            if self.initial_equity is None:
+                self.initial_equity = equity
+                self.max_equity_seen = equity
+            else:
+                if equity > self.max_equity_seen:
+                    self.max_equity_seen = equity
+            
+            # Calculate drawdown
+            drawdown_pct = 0
+            if self.max_equity_seen and equity < self.max_equity_seen:
+                drawdown_pct = ((self.max_equity_seen - equity) / self.max_equity_seen) * 100
+            
             self.equity_history.append({
                 'timestamp': datetime.now(),
                 'equity': equity,
                 'cash': account.get('cash', 0),
-                'positions_value': account.get('portfolio_value', 0) - account.get('cash', 0)
+                'positions_value': account.get('portfolio_value', 0) - account.get('cash', 0),
+                'drawdown_pct': drawdown_pct,
+                'max_equity': self.max_equity_seen
             })
             
-            logger.debug(f"Equity updated: ${equity:,.2f}")
+            logger.debug(f"Equity: ${equity:,.2f} | Max: ${self.max_equity_seen:,.2f} | Drawdown: {drawdown_pct:.2f}%")
             
         except Exception as e:
             logger.error(f"Error updating equity: {e}")
+    
+    def check_kill_switch(self) -> bool:
+        """Check if kill switch file exists."""
+        kill_switch_path = Path(self.kill_switch_file)
+        if kill_switch_path.exists():
+            logger.warning(f"Kill switch file detected: {self.kill_switch_file}. Stopping trading.")
+            self.trading_enabled = False
+            return True
+        return False
+    
+    def check_risk_limits(self) -> tuple:
+        """
+        Check if risk limits are exceeded.
+        
+        Returns:
+            (should_stop, reason)
+        """
+        if not self.trading_enabled:
+            return True, "Trading disabled (kill switch)"
+        
+        # Check kill switch file
+        if self.check_kill_switch():
+            return True, "Kill switch file detected"
+        
+        # Check consecutive losses
+        if self.consecutive_losses >= self.max_consecutive_losses:
+            logger.error(f"Max consecutive losses ({self.max_consecutive_losses}) exceeded!")
+            self.trading_enabled = False
+            return True, f"Max consecutive losses ({self.max_consecutive_losses}) exceeded"
+        
+        # Check drawdown
+        if self.max_equity_seen is not None:
+            account = self.alpaca.get_account()
+            current_equity = account.get('portfolio_value', 0)
+            
+            if current_equity < self.max_equity_seen:
+                drawdown_pct = ((self.max_equity_seen - current_equity) / self.max_equity_seen) * 100
+                
+                if drawdown_pct >= self.max_drawdown_pct:
+                    logger.error(f"Max drawdown ({self.max_drawdown_pct}%) exceeded! Current: {drawdown_pct:.2f}%")
+                    self.trading_enabled = False
+                    return True, f"Max drawdown ({self.max_drawdown_pct}%) exceeded: {drawdown_pct:.2f}%"
+        
+        return False, ""
+    
+    def update_trade_stats(self, symbol: str, action: str, price: float, qty: int):
+        """Update trade statistics and check for losses."""
+        # Track if last trade was a loss
+        if action == 'sell' and len(self.trade_log) > 0:
+            # Find entry price for this position
+            entry_price = None
+            for trade in reversed(self.trade_log):
+                if trade['symbol'] == symbol and trade['action'] == 'buy':
+                    entry_price = trade.get('price', 0)
+                    break
+            
+            if entry_price:
+                pnl_pct = ((price - entry_price) / entry_price) * 100
+                if pnl_pct < 0:
+                    self.consecutive_losses += 1
+                    self.last_trade_was_loss = True
+                    logger.warning(f"Trade loss: {pnl_pct:.2f}%. Consecutive losses: {self.consecutive_losses}")
+                else:
+                    self.consecutive_losses = 0
+                    self.last_trade_was_loss = False
+                    logger.info(f"Trade profit: {pnl_pct:.2f}%. Reset consecutive losses.")
     
     def save_logs(self):
         """Save trading logs to disk."""
         try:
             log_dir = Path("logs")
+            results_dir = Path("results")
             log_dir.mkdir(exist_ok=True)
+            results_dir.mkdir(exist_ok=True)
             
             # Save equity history
             if self.equity_history:
@@ -266,12 +390,25 @@ class LiveTradingRunner:
                 equity_df.to_csv(equity_path, index=False)
                 logger.info(f"Saved equity history to {equity_path}")
             
-            # Save trade log
+            # Save trade log to both logs and results
             if self.trade_log:
                 trade_df = pd.DataFrame(self.trade_log)
-                trade_path = log_dir / f"trade_log_{datetime.now().strftime('%Y%m%d')}.csv"
-                trade_df.to_csv(trade_path, index=False)
-                logger.info(f"Saved trade log to {trade_path}")
+                
+                # Save to logs with date
+                trade_path_log = log_dir / f"trade_log_{datetime.now().strftime('%Y%m%d')}.csv"
+                trade_df.to_csv(trade_path_log, index=False)
+                logger.info(f"Saved trade log to {trade_path_log}")
+                
+                # Save to results/trades_log.csv (append mode)
+                trades_log_path = results_dir / "trades_log.csv"
+                if trades_log_path.exists():
+                    existing_df = pd.read_csv(trades_log_path)
+                    combined_df = pd.concat([existing_df, trade_df], ignore_index=True)
+                    combined_df = combined_df.drop_duplicates(subset=['timestamp', 'symbol', 'action'], keep='last')
+                    combined_df.to_csv(trades_log_path, index=False)
+                else:
+                    trade_df.to_csv(trades_log_path, index=False)
+                logger.info(f"Updated trades log: {trades_log_path}")
             
         except Exception as e:
             logger.error(f"Error saving logs: {e}")
@@ -280,62 +417,115 @@ class LiveTradingRunner:
         """Run one trading cycle for a symbol."""
         logger.info(f"Running trading cycle for {symbol}...")
         
-        # Check if market is open
-        if not self.is_market_open():
-            logger.info("Market is closed, skipping cycle")
+        # Check risk limits first
+        should_stop, reason = self.check_risk_limits()
+        if should_stop:
+            logger.warning(f"Trading cycle skipped: {reason}")
             return
+        
+        # Check if market is open
+        market_open = self.is_market_open()
+        
+        # Allow trading outside market hours if enabled in config (for testing)
+        allow_after_hours = self.config.get('live', {}).get('allow_after_hours', False)
+        
+        if not market_open:
+            if allow_after_hours:
+                logger.warning("Market is closed, but allow_after_hours is enabled - proceeding with caution")
+            else:
+                logger.info("Market is closed, skipping cycle")
+                return
         
         # Determine if we should trade
         should_buy, should_sell = self.should_trade(symbol)
         
-        # Execute trades
-        if should_buy:
-            qty = self.calculate_position_size(symbol, 1)
-            if qty > 0:
-                self.execute_trade(symbol, 'buy', qty)
-        
-        if should_sell:
-            qty = self.calculate_position_size(symbol, -1)
-            if qty > 0:
-                self.execute_trade(symbol, 'sell', qty)
+        # Execute trades (only if trading is enabled)
+        if self.trading_enabled:
+            if should_buy:
+                qty = self.calculate_position_size(symbol, 1)
+                if qty > 0:
+                    logger.info(f"{symbol}: Executing BUY order for {qty} shares")
+                    self.execute_trade(symbol, 'buy', qty)
+                else:
+                    logger.warning(f"{symbol}: Cannot execute BUY - calculated qty is 0")
+            
+            if should_sell:
+                qty = self.calculate_position_size(symbol, -1)
+                if qty > 0:
+                    logger.info(f"{symbol}: Executing SELL order for {qty} shares")
+                    self.execute_trade(symbol, 'sell', qty)
+                else:
+                    logger.warning(f"{symbol}: Cannot execute SELL - calculated qty is 0")
+        else:
+            logger.warning(f"{symbol}: Trading is disabled - skipping execution")
         
         # Update equity
         self.update_equity()
     
     def run_continuous(self, symbols: List[str]):
-        """Run continuous trading loop."""
+        """Run continuous trading loop with risk management."""
         logger.info(f"Starting continuous trading for symbols: {symbols}")
         
+        # Initialize equity tracking
+        self.update_equity()
+        
         try:
-            while True:
+            while self.trading_enabled:
                 logger.info("=" * 60)
                 logger.info("Starting trading cycle...")
                 logger.info(f"Current time: {datetime.now()}")
                 
+                # Check risk limits before each cycle
+                should_stop, reason = self.check_risk_limits()
+                if should_stop:
+                    logger.error(f"Trading stopped: {reason}")
+                    break
+                
                 # Run cycle for each symbol
                 for symbol in symbols:
                     try:
+                        if not self.trading_enabled:
+                            break
                         self.run_one_cycle(symbol)
                     except Exception as e:
                         logger.error(f"Error in trading cycle for {symbol}: {e}")
                 
-                # Save logs periodically
+                # Save logs periodically (every hour or when stopped)
                 if self.last_check is None or (datetime.now() - self.last_check).seconds > 3600:
                     self.save_logs()
                     self.last_check = datetime.now()
                 
+                # Print status summary
+                account = self.alpaca.get_account()
+                equity = account.get('portfolio_value', 0)
+                drawdown_info = ""
+                if self.max_equity_seen:
+                    drawdown_pct = ((self.max_equity_seen - equity) / self.max_equity_seen) * 100 if equity < self.max_equity_seen else 0
+                    drawdown_info = f" | Drawdown: {drawdown_pct:.2f}%"
+                
+                logger.info(f"Equity: ${equity:,.2f}{drawdown_info} | Consecutive Losses: {self.consecutive_losses}/{self.max_consecutive_losses}")
+                
                 # Wait before next cycle
                 logger.info(f"Waiting {self.check_interval} seconds until next cycle...")
-                time.sleep(self.check_interval)
+                
+                # Check for stop file during wait (check every 10 seconds)
+                for _ in range(self.check_interval // 10):
+                    if self.check_kill_switch():
+                        break
+                    time.sleep(10)
                 
         except KeyboardInterrupt:
-            logger.info("Trading stopped by user")
+            logger.info("Trading stopped by user (Ctrl+C)")
         except Exception as e:
             logger.error(f"Error in trading loop: {e}")
         finally:
             # Final save
             self.save_logs()
             logger.info("Trading session ended")
+            
+            # Print final summary
+            account = self.alpaca.get_account()
+            print_portfolio_summary(self.alpaca)
 
 
 def print_portfolio_summary(alpaca: AlpacaInterface):
@@ -374,18 +564,24 @@ if __name__ == "__main__":
     # Print initial portfolio
     print_portfolio_summary(runner.alpaca)
     
-    # Ask for confirmation
-    print("\n⚠️  WARNING: This will execute live/paper trades!")
-    print("Make sure you have:")
-    print("  1. Configured config/secrets.yaml with your Alpaca credentials")
-    print("  2. Verified you're using paper trading URL")
-    print("  3. Tested your strategy thoroughly in backtests")
+    # Ask for confirmation (or check for auto-confirm)
+    auto_confirm = os.getenv('AUTO_CONFIRM', 'false').lower() == 'true' or '--auto-confirm' in sys.argv
     
-    response = input("\nProceed with live trading? (yes/no): ")
-    
-    if response.lower() in ['yes', 'y']:
-        # Run continuous trading
-        runner.run_continuous(tickers)
+    if not auto_confirm:
+        print("\n⚠️  WARNING: This will execute live/paper trades!")
+        print("Make sure you have:")
+        print("  1. Configured config/secrets.yaml with your Alpaca credentials")
+        print("  2. Verified you're using paper trading URL")
+        print("  3. Tested your strategy thoroughly in backtests")
+        
+        response = input("\nProceed with live trading? (yes/no): ")
+        
+        if response.lower() not in ['yes', 'y']:
+            print("Trading cancelled.")
+            sys.exit(0)
     else:
-        print("Trading cancelled.")
+        logger.info("Auto-confirmation enabled. Starting trading...")
+    
+    # Run continuous trading
+    runner.run_continuous(tickers)
 
