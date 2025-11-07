@@ -71,7 +71,7 @@ import sys
 import subprocess
 import platform
 import signal
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Setup Streamlit logging after import
 setup_streamlit_logging()
@@ -83,7 +83,7 @@ warnings.simplefilter("ignore")
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stock_ai.api.alpaca_interface import AlpacaInterface
+from stock_ai.api import BrokerError, REGISTRY
 
 # Initialize page configuration only when in Streamlit context
 def init_page_config():
@@ -134,6 +134,25 @@ def apply_custom_css():
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUN_STATE_DIR = PROJECT_ROOT / "run_state"
 PID_FILE = RUN_STATE_DIR / "live_runner.pid"
+DASHBOARD_CONFIG_PATH = PROJECT_ROOT / "config" / "dashboard.yaml"
+
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    "active_broker": "alpaca",
+    "brokers": {
+        "alpaca": {
+            "config_path": "config/secrets.yaml",
+        },
+        "manual_csv": {
+            "trades_csv": "",
+            "account_label": "My Brokerage Account",
+            "cash": 0.0,
+            "equity": 0.0,
+            "buying_power": 0.0,
+        },
+    },
+}
+
+NUMERIC_BROKER_FIELDS = {"cash", "equity", "buying_power"}
 
 
 def _ensure_dirs():
@@ -175,12 +194,87 @@ def save_secrets(alpaca_key: str, alpaca_secret: str, base_url: str) -> bool:
     return write_yaml(PROJECT_ROOT / "config" / "secrets.yaml", secrets)
 
 
-def load_settings() -> dict:
+def _merge_settings(base: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    result: Dict[str, Any] = dict(base)
+    if not overrides:
+        return result
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_settings(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_dashboard_settings() -> Dict[str, Any]:
+    stored = read_yaml(DASHBOARD_CONFIG_PATH)
+    return _merge_settings(DEFAULT_SETTINGS, stored)
+
+
+def save_dashboard_settings(updated: Dict[str, Any]) -> bool:
+    existing = read_yaml(DASHBOARD_CONFIG_PATH)
+    merged = _merge_settings(DEFAULT_SETTINGS, existing)
+    merged = _merge_settings(merged, updated)
+    return write_yaml(DASHBOARD_CONFIG_PATH, merged)
+
+
+def load_strategy_settings() -> Dict[str, Any]:
     return read_yaml(PROJECT_ROOT / "config" / "settings.yaml")
 
 
-def save_settings(updated: dict) -> bool:
+def save_strategy_settings(updated: Dict[str, Any]) -> bool:
     return write_yaml(PROJECT_ROOT / "config" / "settings.yaml", updated)
+
+
+BROKER_CACHE: Dict[str, Any] = {}
+
+
+def get_broker_client(settings: Dict[str, Any]) -> Tuple[Optional[Any], Optional[str]]:
+    """Initialise the broker client defined in settings."""
+
+    broker_id = settings.get("active_broker", DEFAULT_SETTINGS["active_broker"])
+    definition = REGISTRY.get(broker_id)
+    if definition is None:
+        return None, f"Broker '{broker_id}' is not registered"
+
+    broker_settings = settings.get("brokers", {}).get(broker_id, {})
+    cache_key = (broker_id, tuple(sorted(broker_settings.items())))
+    cached = BROKER_CACHE.get(cache_key)
+    if cached is not None:
+        return cached, None
+
+    try:
+        client = REGISTRY.create(broker_id, broker_settings)
+        client.connect()
+        BROKER_CACHE[cache_key] = client
+        return client, None
+    except (BrokerError, ValueError) as exc:
+        BROKER_CACHE.pop(cache_key, None)
+        return None, str(exc)
+
+
+def safe_call(client: Any, method: str, *args, default=None, **kwargs):
+    if client is None:
+        return default
+    func = getattr(client, method, None)
+    if not callable(func):
+        return default
+    try:
+        return func(*args, **kwargs)
+    except Exception as exc:  # pylint: disable=broad-except
+        try:
+            st.warning(f"Broker error calling {method}: {exc}")
+        except Exception:  # Not in Streamlit context
+            pass
+        return default
+
+
+def format_currency(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    return f"${number:,.2f}"
 
 
 def get_python_executable() -> str:
@@ -223,7 +317,7 @@ def get_saved_pid() -> int:
 def start_live_trading() -> int:
     _ensure_dirs()
     # Remove kill switch if present
-    settings = load_settings()
+    settings = load_strategy_settings()
     kill_file = settings.get('risk', {}).get('kill_switch_file', 'stop.txt')
     try:
         (PROJECT_ROOT / kill_file).unlink(missing_ok=True)  # type: ignore[attr-defined]
@@ -252,7 +346,7 @@ def start_live_trading() -> int:
 
 
 def stop_live_trading(grace_seconds: int = 10) -> bool:
-    settings = load_settings()
+    settings = load_strategy_settings()
     kill_file = settings.get('risk', {}).get('kill_switch_file', 'stop.txt')
     # Create kill switch to ask runner to stop
     try:
@@ -316,132 +410,89 @@ def install_requirements():
         return False
 
 
-def compute_limit_price(api: AlpacaInterface, symbol: str, side: str, pad_pct: float = 0.01) -> Optional[float]:
-    """Compute a reasonable limit price using quote or last bar as fallback."""
-    quote = None
-    try:
-        quote = api.get_quote(symbol)
-    except Exception:
-        quote = None
-    price = None
-    if quote and (quote.get('ask_price') or quote.get('bid_price')):
-        if side == 'buy':
-            base = quote.get('ask_price') or quote.get('bid_price')
-            price = base * (1 + abs(pad_pct))
-        else:
-            base = quote.get('bid_price') or quote.get('ask_price')
-            price = base * (1 - abs(pad_pct))
-    else:
-        # Fallback to latest minute bar
-        bars = api.get_bars([symbol], '1Min', limit=1)
-        if bars and symbol in bars and len(bars[symbol]) > 0:
-            last_close = bars[symbol][-1]['close']
-            if side == 'buy':
-                price = last_close * (1 + abs(pad_pct))
-            else:
-                price = last_close * (1 - abs(pad_pct))
-    if price and price > 0:
-        return round(price, 2)
-    return None
+def place_manual_order(client: Any, symbol: str, qty: int, side: str) -> str:
+    """Place an order through the connected broker."""
 
+    if client is None:
+        return "No broker connected"
 
-def place_manual_order(symbol: str, qty: int, side: str) -> str:
-    """Place a manual/test order, using market if open, limit otherwise."""
-    api = AlpacaInterface()
-    clk = api.get_clock()
-    is_open = bool(clk.get('is_open', False))
+    submit = getattr(client, "submit_order", None)
+    if not callable(submit):
+        return f"{getattr(client, 'display_name', 'Broker')} does not support order placement from the dashboard"
+
     symbol = symbol.upper().strip()
     qty = max(1, int(qty))
-    if is_open:
-        oid = api.submit_order(symbol, qty, side=side, order_type='market', time_in_force='day')
-        if not oid:
-            return "Failed to submit market order"
-        info = api.wait_for_fill(oid, timeout_seconds=90, poll_interval=2.0)
-        return f"Order {oid} status: {info.get('status') if info else 'unknown'}"
-    # Market closed -> try extended-hours limit
-    limit_price = compute_limit_price(api, symbol, side, pad_pct=0.01)
-    if not limit_price:
-        return "Could not compute a limit price (no quote/bar)"
-    oid = api.submit_order(
-        symbol, qty, side=side, order_type='limit', time_in_force='day', limit_price=limit_price, extended_hours=True
-    )
-    if not oid:
-        return "Failed to submit extended-hours limit order"
-    info = api.wait_for_fill(oid, timeout_seconds=10, poll_interval=2.0)
-    if info and info.get('status') == 'filled':
-        return f"Order {oid} filled at {info.get('filled_avg_price')}"
-    return f"Order {oid} submitted (market closed) — will fill when executable."
 
-def get_account_data():
-    """Get current account data from Alpaca."""
     try:
-        api = AlpacaInterface()
-        account = api.get_account()
-        positions = api.get_positions()
-        clock = api.api.get_clock()
-        return account, positions, clock
-    except Exception as e:
-        # Only show error if we're in a Streamlit context
-        try:
-            st.error(f"Error connecting to Alpaca: {e}")
-        except:
-            pass  # Not in Streamlit context yet
-        return None, [], None
+        order_id = submit(symbol=symbol, qty=qty, side=side, order_type="market")
+    except Exception as exc:  # pylint: disable=broad-except
+        return f"Order failed: {exc}"
 
-def get_recent_orders(limit=50):
-    """Get recent orders from Alpaca API (real-time)."""
-    try:
-        api = AlpacaInterface()
-        orders = api.get_orders(status='all', limit=limit)
-        # Convert to DataFrame format
-        order_data = []
-        for order in orders:
-            # Get timestamp (prefer filled_at if available, otherwise submitted_at)
-            timestamp_str = order.get('filled_at') or order.get('submitted_at') or order.get('created_at', '')
-            try:
-                timestamp = pd.Timestamp(timestamp_str) if timestamp_str else pd.Timestamp.now()
-            except:
-                timestamp = pd.Timestamp.now()
-            
-            order_data.append({
-                'timestamp': timestamp,
-                'symbol': order.get('symbol', ''),
-                'action': order.get('side', '').upper(),
-                'qty': order.get('qty', 0),
-                'order_type': order.get('type', ''),
-                'status': order.get('status', ''),
-                'filled_qty': order.get('filled_qty', 0),
-                'filled_avg_price': order.get('filled_avg_price', 0) or 0,
-                'order_id': order.get('id', order.get('order_id', ''))
-            })
-        if order_data:
-            df = pd.DataFrame(order_data)
-            # Sort by timestamp, most recent first
-            df = df.sort_values('timestamp', ascending=False)
-            return df
+    if not order_id:
+        return "Order submitted but broker did not return an ID"
+    return f"Order {order_id} submitted successfully"
+
+def get_account_data(client: Any) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Fetch account information from the active broker."""
+
+    account = safe_call(client, "get_account", default=None)
+    positions = safe_call(client, "list_positions", default=[]) or []
+    clock = safe_call(client, "get_clock", default=None)
+    return account, positions, clock
+
+
+def _normalise_orders(raw_orders: List[Dict[str, Any]]) -> pd.DataFrame:
+    if not raw_orders:
         return pd.DataFrame()
-    except Exception as e:
+    order_data = []
+    for order in raw_orders:
+        timestamp_str = (
+            order.get("filled_at")
+            or order.get("submitted_at")
+            or order.get("timestamp")
+            or order.get("created_at")
+            or ""
+        )
         try:
-            st.warning(f"Could not load orders: {e}")
-        except:
-            pass
+            timestamp = pd.to_datetime(timestamp_str) if timestamp_str else pd.Timestamp.now()
+        except Exception:  # pylint: disable=broad-except
+            timestamp = pd.Timestamp.now()
+        order_data.append(
+            {
+                "timestamp": timestamp,
+                "symbol": order.get("symbol", order.get("Symbol", "")),
+                "action": (order.get("side") or order.get("Side", "")).upper(),
+                "qty": float(order.get("qty", order.get("Quantity", 0)) or 0),
+                "order_type": order.get("type", order.get("Order Type", "")),
+                "status": order.get("status", order.get("Status", "")),
+                "filled_qty": float(order.get("filled_qty", order.get("Filled Qty", 0)) or 0),
+                "filled_avg_price": float(order.get("filled_avg_price", order.get("Price", 0)) or 0),
+                "order_id": order.get("id", order.get("order_id", order.get("Order ID", ""))),
+            }
+        )
+    df = pd.DataFrame(order_data)
+    return df.sort_values("timestamp", ascending=False)
+
+
+def get_recent_orders(client: Any, limit: int = 50) -> pd.DataFrame:
+    """Get recent orders from the selected broker."""
+
+    if client is None:
         return pd.DataFrame()
 
-def get_pending_orders():
-    """Get pending/open orders from Alpaca."""
-    try:
-        api = AlpacaInterface()
-        orders = api.get_orders(status='open', limit=20)
-        return orders
-    except Exception as e:
-        return []
+    orders = safe_call(client, "list_orders", status="all", limit=limit, default=None)
+    if orders is None:
+        orders = safe_call(client, "list_orders", default=[])
+    if not orders:
+        return pd.DataFrame()
+    return _normalise_orders(orders)
 
-# Cache function only when Streamlit context exists
-try:
-    get_account_data = st.cache_data(ttl=2)(get_account_data)  # Cache for 2 seconds for real-time feel
-    get_recent_orders = st.cache_data(ttl=3)(get_recent_orders)  # Cache for 3 seconds
-except:
-    pass  # Not in Streamlit context, use uncached version
+
+def get_pending_orders(client: Any) -> List[Dict[str, Any]]:
+    orders = safe_call(client, "list_orders", status="open", limit=20, default=None)
+    if orders is None:
+        orders = safe_call(client, "list_orders", default=[])
+    return orders or []
 
 
 def load_equity_history():
@@ -497,8 +548,7 @@ def load_live_trading_log():
 def load_config():
     """Load trading configuration."""
     try:
-        with open("config/settings.yaml", 'r') as f:
-            return yaml.safe_load(f)
+        return load_strategy_settings()
     except Exception as e:
         st.warning(f"Could not load config: {e}")
         return {}
@@ -544,363 +594,353 @@ def create_equity_chart(df):
 
 
 def main():
-    """Main dashboard function."""
-    
-    # Initialize Streamlit components
+    """Render the Streamlit dashboard."""
+
     init_page_config()
     apply_custom_css()
-    
-    # Header
-    st.title("📈 Paper Trading Dashboard")
+    _ensure_dirs()
+
+    st.title("📊 Trading Control Center")
+    st.caption("Monitor live trades, review history, and manage broker credentials without writing code.")
     st.markdown("---")
-    
-    # Quick checks and helper banner
-    st.sidebar.header("🚀 Quick Actions")
-    if not dependency_installed('alpaca_trade_api'):
-        st.sidebar.error("alpaca-trade-api not installed")
-        if st.sidebar.button("Install requirements"):
-            with st.spinner("Installing packages... this may take a minute"):
-                if install_requirements():
-                    st.success("Installed. Please rerun.")
-                    st.rerun()
-    
-    # Start/Stop controls
-    bot_active = is_bot_running()
-    if bot_active:
-        st.sidebar.success("🤖 Trading Bot: ACTIVE")
-        if st.sidebar.button("⏹️ Stop Bot"):
-            with st.spinner("Stopping bot..."):
-                stop_live_trading()
+
+    dashboard_settings = load_dashboard_settings()
+    strategy_settings = load_strategy_settings()
+    broker_id = dashboard_settings.get("active_broker", DEFAULT_SETTINGS["active_broker"])
+    broker_client, broker_error = get_broker_client(dashboard_settings)
+    broker_definitions = REGISTRY.list_definitions()
+
+    definition_by_name = {definition.display_name: definition for definition in broker_definitions}
+    selected_definition = next((d for d in broker_definitions if d.broker_id == broker_id), broker_definitions[0] if broker_definitions else None)
+
+    with st.sidebar:
+        st.header("🔌 Broker connection")
+        if broker_definitions:
+            display_names = list(definition_by_name.keys())
+            default_index = display_names.index(selected_definition.display_name) if selected_definition else 0
+            choice = st.selectbox("Active broker", display_names, index=default_index)
+            chosen_definition = definition_by_name[choice]
+            if chosen_definition.broker_id != broker_id:
+                save_dashboard_settings({"active_broker": chosen_definition.broker_id})
+                BROKER_CACHE.clear()
+                st.success(f"Switched to {chosen_definition.display_name}. Reloading...")
+                st.rerun()
+            st.caption(chosen_definition.description)
+            selected_definition = chosen_definition
+        else:
+            st.warning("No broker implementations registered. Add one in stock_ai/api/.")
+            selected_definition = None
+
+        if st.button("🔄 Retry connection"):
+            BROKER_CACHE.clear()
+            st.rerun()
+
+        if broker_error:
+            st.error(f"Connection failed: {broker_error}")
+        elif selected_definition:
+            st.success(f"Connected to {selected_definition.display_name}")
+
+        st.divider()
+        st.header("🤖 Automation")
+        if not dependency_installed('alpaca_trade_api'):
+            st.warning("alpaca-trade-api not installed")
+            if st.button("Install requirements"):
+                with st.spinner("Installing required packages..."):
+                    if install_requirements():
+                        st.success("Dependencies installed. Please rerun.")
+                        st.rerun()
+        else:
+            st.caption("alpaca-trade-api available")
+
+        bot_active = is_bot_running()
+        if bot_active:
+            st.success("Trading bot running")
+            if st.button("⏹️ Stop bot"):
+                with st.spinner("Stopping live trading..."):
+                    stop_live_trading()
                 st.success("Bot stopped")
                 st.rerun()
-    else:
-        st.sidebar.warning("🤖 Trading Bot: INACTIVE")
-        if st.sidebar.button("▶️ Start Bot"):
-            with st.spinner("Starting bot..."):
-                pid = start_live_trading()
+        else:
+            st.info("Trading bot stopped")
+            if st.button("▶️ Start bot"):
+                with st.spinner("Starting live trading..."):
+                    pid = start_live_trading()
                 if pid > 0:
                     st.success(f"Bot started (PID {pid})")
                 st.rerun()
-    
-    # Auto-refresh checkbox
-    auto_refresh = st.sidebar.checkbox("Auto-refresh (5s)", value=True)
-    if auto_refresh:
-        refresh_interval = st.sidebar.slider("Refresh interval (seconds)", 1, 30, 5)
-        time.sleep(refresh_interval)
-        st.rerun()
-    else:
-        if st.sidebar.button("🔄 Refresh"):
+
+        st.divider()
+        st.header("🔁 Refresh")
+        auto_refresh = st.checkbox("Auto refresh", value=True)
+        refresh_interval = st.slider("Refresh every", min_value=5, max_value=60, value=10, step=5)
+        if auto_refresh:
+            time.sleep(refresh_interval)
             st.rerun()
-    
-    # Load data
-    account, positions, clock = get_account_data()
+        elif st.button("Refresh now"):
+            st.rerun()
+
+    account, positions, clock = (None, [], None)
+    if broker_client:
+        account, positions, clock = get_account_data(broker_client)
+
     equity_df = load_equity_history()
     trades_df = load_trades_log()
-    config = load_config()
-    
-    # Get REAL-TIME orders from Alpaca API
-    realtime_orders_df = get_recent_orders(limit=50)
-    pending_orders = get_pending_orders()
-    
-    if account is None:
-        st.error("⚠️ Could not connect to Alpaca API. Please check your credentials.")
-        return
-    
-    # Sidebar - Status and Config
-    st.sidebar.header("⚙️ Status")
-    
-    # Market status
-    if clock:
-        try:
-            market_status = "🟢 OPEN" if clock.is_open else "🔴 CLOSED"
-            st.sidebar.markdown(f"**Market:** {market_status}")
-            if hasattr(clock, 'next_open') and clock.next_open:
-                try:
-                    next_open = pd.Timestamp(clock.next_open).strftime("%Y-%m-%d %H:%M")
-                    st.sidebar.caption(f"Next open: {next_open}")
-                except:
-                    pass
-        except:
-            st.sidebar.markdown("**Market:** Status unknown")
-    
-    # Trading config display
-    st.sidebar.header("📋 Configuration")
-    if config:
-        strategy = config.get('strategy', {}).get('name', 'N/A')
-        tickers = config.get('tickers', [])
-        st.sidebar.caption(f"**Strategy:** {strategy}")
-        st.sidebar.caption(f"**Symbols:** {', '.join(tickers)}")
-        st.sidebar.caption(f"**Risk Limit:** {config.get('risk', {}).get('max_drawdown_pct', 5)}% drawdown")
-        # Quick risk actions
-        col_a, col_b = st.sidebar.columns(2)
-        with col_a:
-            if st.button("Create Kill Switch"):
-                ks = config.get('risk', {}).get('kill_switch_file', 'stop.txt')
-                (PROJECT_ROOT / ks).write_text("stop")
-                st.sidebar.info("Kill switch created")
-        with col_b:
-            if st.button("Remove Kill Switch"):
-                ks = config.get('risk', {}).get('kill_switch_file', 'stop.txt')
-                try:
-                    (PROJECT_ROOT / ks).unlink()
-                    st.sidebar.success("Removed")
-                except Exception:
-                    st.sidebar.warning("Not found")
-        # Close positions quick action
-        if st.sidebar.button("🛑 Close All Positions"):
-            try:
-                api = AlpacaInterface()
-                ok = api.close_all_positions()
-                if ok:
-                    st.sidebar.success("All positions closed")
-                else:
-                    st.sidebar.warning("Close positions failed")
-            except Exception as e:
-                st.sidebar.error(f"Failed: {e}")
-    
-    # Main dashboard layout
-    col1, col2, col3, col4 = st.columns(4)
-    
-    # Portfolio metrics
-    with col1:
-        portfolio_value = account.get('portfolio_value', 0)
-        st.metric("Portfolio Value", f"${portfolio_value:,.2f}")
-    
-    with col2:
-        cash = account.get('cash', 0)
-        st.metric("Cash", f"${cash:,.2f}")
-    
-    with col3:
-        buying_power = account.get('buying_power', 0)
-        st.metric("Buying Power", f"${buying_power:,.2f}")
-    
-    with col4:
-        equity = account.get('equity', 0)
-        st.metric("Equity", f"${equity:,.2f}")
-    
-    st.markdown("---")
-    
-    # Equity curve and positions
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("📊 Equity Curve")
-        if not equity_df.empty:
-            fig = create_equity_chart(equity_df)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+    realtime_orders_df = get_recent_orders(broker_client, limit=200)
+    pending_orders = get_pending_orders(broker_client)
+    pending_df = _normalise_orders(pending_orders)
+
+    overview_tab, trades_tab, insights_tab, settings_tab = st.tabs([
+        "Overview",
+        "Trade Blotter",
+        "Insights",
+        "Settings",
+    ])
+
+    with overview_tab:
+        st.subheader("Account snapshot")
+        if broker_error or account is None:
+            st.warning("Unable to load account information. Check your credentials in the Settings tab.")
         else:
-            st.info("No equity history data yet. Equity curve will appear after first trading cycle.")
-    
-    with col2:
-        st.subheader("💼 Open Positions")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Portfolio value", format_currency(account.get("portfolio_value")))
+            with col2:
+                st.metric("Cash", format_currency(account.get("cash")))
+            with col3:
+                st.metric("Buying power", format_currency(account.get("buying_power")))
+            with col4:
+                st.metric("Equity", format_currency(account.get("equity")))
+
+        clock_info = {}
+        if clock:
+            if isinstance(clock, dict):
+                clock_info = clock
+            else:
+                clock_info = {
+                    "is_open": getattr(clock, "is_open", None),
+                    "next_open": getattr(clock, "next_open", None),
+                    "next_close": getattr(clock, "next_close", None),
+                }
+
+        if clock_info:
+            status = "🟢 Market open" if clock_info.get("is_open") else "🔴 Market closed"
+            st.info(status)
+            if clock_info.get("next_open"):
+                st.caption(f"Next open: {pd.Timestamp(clock_info['next_open']).strftime('%Y-%m-%d %H:%M')}")
+            if clock_info.get("next_close"):
+                st.caption(f"Next close: {pd.Timestamp(clock_info['next_close']).strftime('%Y-%m-%d %H:%M')}")
+
+        st.markdown("---")
+        st.subheader("Equity curve")
+        if not equity_df.empty:
+            st.plotly_chart(create_equity_chart(equity_df), use_container_width=True)
+        else:
+            st.info("Run the strategy or import equity history to see performance.")
+
+        st.subheader("Open positions")
         if positions:
-            pos_data = []
-            for pos in positions:
-                pnl_color = "positive" if pos['unrealized_pl'] >= 0 else "negative"
-                pnl_sign = "+" if pos['unrealized_pl'] >= 0 else ""
-                pos_data.append({
-                    'Symbol': pos['symbol'],
-                    'Qty': pos['qty'],
-                    'Price': f"${pos['current_price']:.2f}",
-                    'P&L': f"{pnl_sign}${pos['unrealized_pl']:.2f}",
-                    'P&L %': f"{pos['unrealized_plpc']*100:+.2f}%"
-                })
-            pos_df = pd.DataFrame(pos_data)
+            pos_df = pd.DataFrame(positions)
+            rename_map = {
+                "symbol": "Symbol",
+                "qty": "Quantity",
+                "market_value": "Market Value",
+                "current_price": "Price",
+                "unrealized_pl": "Unrealised P/L",
+                "unrealized_plpc": "Unrealised %",
+                "side": "Side",
+            }
+            pos_df = pos_df.rename(columns=rename_map)
+            if "Unrealised %" in pos_df.columns:
+                pos_df["Unrealised %"] = pos_df["Unrealised %"].astype(float) * 100
             st.dataframe(pos_df, use_container_width=True, hide_index=True)
         else:
-            st.info("No open positions")
-    
-    st.markdown("---")
-    
-    # Pending Orders Alert
-    if pending_orders:
-        st.warning(f"⚠️ {len(pending_orders)} Pending Order(s) - Waiting for execution")
-        with st.expander("View Pending Orders", expanded=False):
-            for order in pending_orders[:10]:
-                status_icon = "⏳" if order.get('status') == 'open' else "🔄"
-                st.text(f"{status_icon} {order.get('symbol')} - {order.get('side', '').upper()} {order.get('qty')} @ {order.get('type', '')}")
-    
-    st.markdown("---")
-    
-    # Recent trades and risk metrics
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("⚡ Live Trades (Real-Time from Alpaca)")
-        if not realtime_orders_df.empty:
-            # Show only filled/completed orders
-            filled_orders = realtime_orders_df[
-                (realtime_orders_df['status'] == 'filled') | 
-                (realtime_orders_df['status'] == 'partially_filled')
-            ].head(20)
-            
-            if not filled_orders.empty:
-                # Format display
-                display_orders = filled_orders.copy()
-                display_orders['Time'] = display_orders['timestamp'].apply(
-                    lambda x: pd.Timestamp(x).strftime("%H:%M:%S") if pd.notna(x) else ""
-                )
-                display_orders['Date'] = display_orders['timestamp'].apply(
-                    lambda x: pd.Timestamp(x).strftime("%m/%d") if pd.notna(x) else ""
-                )
-                
-                # Create styled display
-                for idx, order in filled_orders.iterrows():
-                    action_emoji = "🟢 BUY" if order['action'] == 'BUY' else "🔴 SELL"
-                    status_emoji = "✅" if order['status'] == 'filled' else "🟡"
-                    price_str = f"${order['filled_avg_price']:.2f}" if order['filled_avg_price'] > 0 else "Pending"
-                    
-                    col_a, col_b, col_c = st.columns([1, 2, 1])
-                    with col_a:
-                        st.markdown(f"**{action_emoji}**")
-                    with col_b:
-                        st.markdown(f"**{order['symbol']}** {order['filled_qty']}/{order['qty']} @ {price_str}")
-                    with col_c:
-                        time_str = pd.Timestamp(order['timestamp']).strftime("%H:%M:%S") if pd.notna(order['timestamp']) else ""
-                        st.caption(f"{status_emoji} {time_str}")
-                
-                # Also show as table
-                with st.expander("📊 View All Orders Table", expanded=False):
-                    table_data = filled_orders[['timestamp', 'symbol', 'action', 'filled_qty', 'filled_avg_price', 'status']].copy()
-                    table_data['timestamp'] = table_data['timestamp'].apply(
-                        lambda x: pd.Timestamp(x).strftime("%Y-%m-%d %H:%M:%S") if pd.notna(x) else ""
-                    )
-                    table_data['filled_avg_price'] = table_data['filled_avg_price'].apply(
-                        lambda x: f"${x:.2f}" if x > 0 else "N/A"
-                    )
-                    st.dataframe(table_data, use_container_width=True, hide_index=True)
-            else:
-                st.info("No filled orders yet (orders are pending)")
+            st.info("No open positions reported by the broker.")
+
+        if not pending_df.empty:
+            st.subheader("Pending orders")
+            st.dataframe(pending_df[["timestamp", "symbol", "action", "qty", "status"]], use_container_width=True, hide_index=True)
+
+        if hasattr(broker_client, "submit_order") and callable(getattr(broker_client, "submit_order")):
+            with st.expander("Quick trade ticket"):
+                qcol1, qcol2, qcol3 = st.columns([2, 1, 1])
+                with qcol1:
+                    ticket_symbol = st.text_input("Symbol", value="AAPL", key="ticket_symbol")
+                with qcol2:
+                    ticket_qty = st.number_input("Quantity", min_value=1, max_value=10_000, value=1, step=1, key="ticket_qty")
+                with qcol3:
+                    action = st.selectbox("Side", ["buy", "sell"], index=0, key="ticket_side")
+                if st.button("Submit order", key="ticket_submit"):
+                    message = place_manual_order(broker_client, ticket_symbol, int(ticket_qty), side=action)
+                    st.info(message)
+
+    with trades_tab:
+        st.subheader("Live orders and fills")
+        if realtime_orders_df.empty:
+            st.info("No orders received from the broker yet.")
         else:
-            # Fallback to CSV log
-            if not trades_df.empty:
-                st.info("Showing trades from log file (Alpaca API orders not available)")
-                recent_trades = trades_df.head(10)[['timestamp', 'symbol', 'action', 'qty', 'price', 'order_id']]
-                recent_trades['price'] = recent_trades['price'].apply(lambda x: f"${x:.2f}")
-                recent_trades['timestamp'] = recent_trades['timestamp'].apply(lambda x: pd.Timestamp(x).strftime("%Y-%m-%d %H:%M:%S"))
-                st.dataframe(recent_trades, use_container_width=True, hide_index=True)
-            else:
-                st.info("No trades executed yet")
-    
-    with col2:
-        st.subheader("⚠️ Risk Metrics")
-        
-        # Calculate risk metrics
+            available_status = sorted(realtime_orders_df['status'].dropna().unique()) if 'status' in realtime_orders_df else []
+            status_filter = st.multiselect("Status filter", available_status, default=available_status)
+            symbol_filter = st.text_input("Symbol filter", value="", placeholder="e.g. AAPL")
+            filtered = realtime_orders_df.copy()
+            if status_filter:
+                filtered = filtered[filtered['status'].isin(status_filter)]
+            if symbol_filter:
+                filtered = filtered[filtered['symbol'].str.contains(symbol_filter.upper(), case=False, na=False)]
+            st.dataframe(filtered, use_container_width=True, hide_index=True)
+            csv_data = filtered.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", data=csv_data, file_name="broker_orders.csv", mime="text/csv")
+
+        st.markdown("---")
+        st.subheader("Imported trade log")
+        if trades_df.empty:
+            st.info("No trade log found in results/trades_log.csv")
+        else:
+            st.dataframe(trades_df, use_container_width=True, hide_index=True)
+
+        if selected_definition and selected_definition.broker_id == "manual_csv":
+            st.markdown("### Upload fresh fills from your broker")
+            uploaded = st.file_uploader("Drop a CSV exported from your broker", type="csv")
+            if uploaded is not None:
+                dest = PROJECT_ROOT / "data" / f"manual_trades_{int(time.time())}.csv"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(uploaded.getvalue())
+                st.success(f"Saved upload to {dest}. Click 'Save broker settings' to use it.")
+                st.session_state["uploaded_manual_trades"] = str(dest)
+
+    with insights_tab:
+        st.subheader("Risk & diagnostics")
         if not equity_df.empty and 'drawdown_pct' in equity_df.columns:
-            current_drawdown = equity_df['drawdown_pct'].iloc[-1]
-            max_drawdown = equity_df['drawdown_pct'].max()
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                drawdown_color = "🟢" if current_drawdown < 2 else "🟡" if current_drawdown < 4 else "🔴"
-                st.metric("Current Drawdown", f"{drawdown_color} {current_drawdown:.2f}%")
-            with col_b:
-                st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
-        
-        # Show account status
-        if account.get('trading_blocked', False):
-            st.error("⚠️ Trading is blocked")
-        if account.get('account_blocked', False):
-            st.error("🚫 Account is blocked")
-        if account.get('pattern_day_trader', False):
-            st.warning("⚠️ Pattern Day Trader")
-    
-    st.markdown("---")
-    
-    # Live trading log
-    st.subheader("📋 Live Trading Log")
-    log_lines = load_live_trading_log()
-    if log_lines:
-        # Show last 20 lines
-        log_text = "".join(log_lines[-20:])
-        st.text_area("Recent log entries", log_text, height=200, key="log_area")
-    else:
-        st.info("No log entries available")
-    
-    st.markdown("---")
-    
-    # Settings & Broker Setup
-    tabs = st.tabs(["⚙️ Settings", "🔐 Broker Setup"])
-    
-    with tabs[0]:
-        st.subheader("Configuration")
-        settings = load_settings()
-        current_tickers = settings.get('tickers', [])
+            drawdown = equity_df['drawdown_pct']
+            st.metric("Current drawdown", f"{drawdown.iloc[-1]:.2f}%")
+            st.metric("Max drawdown", f"{drawdown.max():.2f}%")
+        else:
+            st.info("Drawdown data not available yet.")
+
+        if account:
+            if account.get('trading_blocked'):
+                st.error("Trading is currently blocked on your broker account.")
+            if account.get('account_blocked'):
+                st.error("Account is blocked. Contact your broker.")
+            if account.get('pattern_day_trader'):
+                st.warning("Broker flags you as a pattern day trader.")
+
+        st.markdown("---")
+        st.subheader("Live trading log")
+        log_lines = load_live_trading_log()
+        if log_lines:
+            st.text_area("Recent log entries", "".join(log_lines[-40:]), height=220, key="live_log")
+        else:
+            st.info("No log entries yet. Start the bot to generate live logs.")
+
+    with settings_tab:
+        st.subheader("Strategy configuration")
+        current_tickers = (strategy_settings or {}).get('tickers', [])
         tickers_str = ", ".join(current_tickers)
-        col_a, col_b = st.columns(2)
-        with col_a:
-            tickers_input = st.text_input("Symbols (comma-separated)", value=tickers_str)
-            check_interval = st.number_input("Check interval (seconds)", min_value=30, max_value=3600, value=int(settings.get('live', {}).get('check_interval', 300)), step=10)
-            allow_after_hours = st.checkbox("Allow after-hours trading (testing)", value=bool(settings.get('live', {}).get('allow_after_hours', False)))
-        with col_b:
-            max_dd = st.number_input("Max drawdown % (kill-switch)", min_value=1.0, max_value=50.0, value=float(settings.get('risk', {}).get('max_drawdown_pct', 5.0)), step=0.5)
-            max_losses = st.number_input("Max consecutive losses", min_value=1, max_value=20, value=int(settings.get('risk', {}).get('max_consecutive_losses', 5)))
-            ks_file = st.text_input("Kill switch file", value=str(settings.get('risk', {}).get('kill_switch_file', 'stop.txt')))
-        if st.button("Save Settings"):
-            updated = settings.copy()
-            # Update tickers
-            updated['tickers'] = [s.strip().upper() for s in tickers_input.split(',') if s.strip()]
-            # Live
+        col1, col2 = st.columns(2)
+        with col1:
+            tickers_input = st.text_input("Symbols (comma separated)", value=tickers_str)
+            check_interval = st.number_input(
+                "Check interval (seconds)",
+                min_value=30,
+                max_value=3600,
+                value=int((strategy_settings or {}).get('live', {}).get('check_interval', 300)),
+                step=30,
+            )
+        with col2:
+            max_dd = st.number_input(
+                "Max drawdown %",
+                min_value=1.0,
+                max_value=50.0,
+                value=float((strategy_settings or {}).get('risk', {}).get('max_drawdown_pct', 5.0)),
+                step=0.5,
+            )
+            max_losses = st.number_input(
+                "Max consecutive losses",
+                min_value=1,
+                max_value=20,
+                value=int((strategy_settings or {}).get('risk', {}).get('max_consecutive_losses', 5)),
+            )
+        ks_file = st.text_input(
+            "Kill switch file",
+            value=str((strategy_settings or {}).get('risk', {}).get('kill_switch_file', 'stop.txt')),
+        )
+        allow_after_hours = st.checkbox(
+            "Allow after-hours trading (testing only)",
+            value=bool((strategy_settings or {}).get('live', {}).get('allow_after_hours', False)),
+        )
+        if st.button("Save strategy settings"):
+            updated = strategy_settings.copy() if strategy_settings else {}
+            updated['tickers'] = [sym.strip().upper() for sym in tickers_input.split(',') if sym.strip()]
             updated.setdefault('live', {})
             updated['live']['check_interval'] = int(check_interval)
             updated['live']['allow_after_hours'] = bool(allow_after_hours)
-            # Risk
             updated.setdefault('risk', {})
             updated['risk']['max_drawdown_pct'] = float(max_dd)
             updated['risk']['max_consecutive_losses'] = int(max_losses)
             updated['risk']['kill_switch_file'] = ks_file.strip() or 'stop.txt'
-            if save_settings(updated):
-                st.success("Settings saved")
+            if save_strategy_settings(updated):
+                st.success("Strategy settings saved")
             else:
                 st.error("Failed to save settings")
-    
-    with tabs[1]:
-        st.subheader("Alpaca Credentials")
-        secrets = load_secrets()
-        alp = secrets.get('alpaca', {})
-        key_id = st.text_input("API Key ID", value=str(alp.get('key_id', '')))
-        secret_key = st.text_input("API Secret Key", value=str(alp.get('secret_key', '')), type="password")
-        base_url = st.text_input("Base URL", value=str(alp.get('base_url', 'https://paper-api.alpaca.markets')))
-        col1x, col2x = st.columns(2)
-        with col1x:
-            if st.button("Save Credentials"):
-                if save_secrets(key_id, secret_key, base_url):
-                    st.success("Saved credentials")
-                else:
-                    st.error("Failed to save credentials")
-        with col2x:
-            if st.button("Test Connection"):
-                try:
-                    api = AlpacaInterface()
-                    acct = api.get_account()
-                    st.success(f"Connected. Portfolio Value: ${acct.get('portfolio_value', 0):,.2f}")
-                except Exception as e:
-                    st.error(f"Connection failed: {e}")
-        st.caption("Keys are stored locally in config/secrets.yaml and never uploaded.")
+
         st.markdown("---")
-        st.subheader("🧪 Quick Test / Manual Trade")
-        mcol1, mcol2, mcol3 = st.columns([2,1,2])
-        with mcol1:
-            man_symbol = st.text_input("Symbol", value="AAPL")
-        with mcol2:
-            man_qty = st.number_input("Quantity", min_value=1, max_value=1000, value=1, step=1)
-        with mcol3:
-            st.caption("Uses market order when open; limit with extended-hours when closed.")
-        tcol1, tcol2 = st.columns(2)
-        with tcol1:
-            if st.button("Buy 1x Test"):
-                msg = place_manual_order(man_symbol, int(man_qty), side='buy')
-                st.info(msg)
-        with tcol2:
-            if st.button("Sell 1x Test"):
-                msg = place_manual_order(man_symbol, int(man_qty), side='sell')
-                st.info(msg)
-    
-    # Footer
+        if selected_definition:
+            st.subheader(f"{selected_definition.display_name} settings")
+            broker_settings = dashboard_settings.get('brokers', {}).get(selected_definition.broker_id, {})
+            broker_updates: Dict[str, Any] = {}
+            for field_name, help_text in {**selected_definition.required_credentials, **selected_definition.optional_credentials}.items():
+                label = help_text or field_name.replace('_', ' ').title()
+                current_value = broker_settings.get(field_name, "")
+                key = f"{selected_definition.broker_id}_{field_name}"
+                if field_name in NUMERIC_BROKER_FIELDS:
+                    broker_updates[field_name] = st.number_input(label, value=float(current_value or 0.0), key=key)
+                else:
+                    broker_updates[field_name] = st.text_input(label, value=str(current_value or ""), key=key)
+
+            uploaded_manual_path = st.session_state.get("uploaded_manual_trades")
+            if uploaded_manual_path and selected_definition.broker_id == "manual_csv":
+                st.info(f"Using uploaded trades file: {uploaded_manual_path}")
+                broker_updates['trades_csv'] = uploaded_manual_path
+
+            if st.button("Save broker settings"):
+                save_payload = {
+                    "brokers": {
+                        selected_definition.broker_id: broker_updates
+                    }
+                }
+                if save_dashboard_settings(save_payload):
+                    st.success("Broker settings saved")
+                    BROKER_CACHE.clear()
+                    st.session_state.pop("uploaded_manual_trades", None)
+                else:
+                    st.error("Could not save broker settings")
+
+            if selected_definition.broker_id == "alpaca":
+                st.markdown("---")
+                st.subheader("Alpaca API keys")
+                secrets = load_secrets()
+                alp = secrets.get('alpaca', {})
+                key_id = st.text_input("API Key ID", value=str(alp.get('key_id', '')), key="alpaca_key")
+                secret_key = st.text_input("API Secret Key", value=str(alp.get('secret_key', '')), type="password", key="alpaca_secret")
+                base_url = st.text_input("Base URL", value=str(alp.get('base_url', 'https://paper-api.alpaca.markets')), key="alpaca_base")
+                if st.button("Save Alpaca keys"):
+                    if save_secrets(key_id, secret_key, base_url):
+                        st.success("Credentials saved to config/secrets.yaml")
+                    else:
+                        st.error("Could not save credentials")
+                if st.button("Test Alpaca connection"):
+                    try:
+                        from stock_ai.api.alpaca_interface import AlpacaInterface  # Local import to avoid circular
+
+                        api = AlpacaInterface()
+                        acct = api.get_account()
+                        st.success(f"Connected. Portfolio value {format_currency(acct.get('portfolio_value'))}")
+                    except Exception as exc:  # pylint: disable=broad-except
+                        st.error(f"Connection failed: {exc}")
+
     st.markdown("---")
     st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    st.caption("💡 Tip: Enable auto-refresh for real-time monitoring")
+    st.caption("💡 Tip: keep auto refresh enabled while the bot is live for real-time monitoring.")
 
 
 if __name__ == "__main__":
