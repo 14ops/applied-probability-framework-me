@@ -1,11 +1,14 @@
-"""Broker API utilities."""
+"""Broker API package."""
 
-from .base_broker import BrokerInterface, OrderResult
-from .broker_factory import BrokerFactory, BrokerNotAvailableError
+from .broker_clients import BrokerClient, BrokerDefinition, BrokerError, REGISTRY
+
+# Import broker implementations to ensure they register themselves
+from . import alpaca_broker  # noqa: F401
+from . import manual_broker  # noqa: F401
 
 __all__ = [
-    "BrokerInterface",
-    "OrderResult",
-    "BrokerFactory",
-    "BrokerNotAvailableError",
+    "BrokerClient",
+    "BrokerDefinition",
+    "BrokerError",
+    "REGISTRY",
 ]
