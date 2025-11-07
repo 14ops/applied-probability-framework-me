@@ -15,51 +15,58 @@ The dashboard will automatically open in your browser at `http://localhost:8501`
 
 ### 📊 Real-Time Monitoring
 - **Portfolio Metrics**: Live portfolio value, cash, buying power, and equity
-- **Market Status**: Shows if market is open or closed
-- **Equity Curve**: Interactive chart showing portfolio performance over time
-- **Open Positions**: Current positions with P&L tracking
-- **Recent Trades**: Last 10 trades with full details
-- **Risk Metrics**: Current and max drawdown tracking
-- **Live Logs**: Real-time trading log feed
+- **Market Status**: Clearly indicates when the market is open or closed
+- **Equity Curve**: Interactive chart for portfolio performance over time
+- **Open Positions**: Current holdings with real-time P&L tracking
+- **Trade Blotter**: Filterable view of fills/orders from any connected broker
+- **Risk Metrics**: Current and max drawdown, account alerts, and broker warnings
+- **Live Logs**: Stream of trading activity for quick diagnostics
+
+### 🔌 Broker Flexibility
+- **Broker Registry**: Choose Alpaca or upload CSV exports from other brokers
+- **Manual/CSV Mode**: Point the dashboard at any trade history file to review fills
+- **Credential Management**: Update broker-specific settings directly in the UI
 
 ### 🎛️ Controls
-- **Auto-refresh**: Automatically updates every 5 seconds (configurable)
-- **Manual refresh**: Click refresh button when auto-refresh is off
-- **Sidebar**: Shows market status, strategy config, and risk limits
+- **Auto-refresh**: Automatic updates on a configurable interval
+- **Manual refresh**: One-click refresh whenever auto mode is disabled
+- **Sidebar**: Connection status, broker controls, and trading bot start/stop buttons
 
 ## 📋 Dashboard Sections
 
-### 1. Portfolio Overview
-- Portfolio Value, Cash, Buying Power, Equity in metric cards
+### 1. Overview Tab
+- Portfolio cards for value, cash, buying power, and equity
+- Market status with next open/close times
+- Equity curve chart
+- Live positions table and pending order summary
+- Optional quick trade ticket for brokers that support order placement
 
-### 2. Equity Curve
-- Interactive Plotly chart showing portfolio value over time
-- Includes peak equity line to visualize drawdowns
+### 2. Trade Blotter Tab
+- Searchable, filterable list of recent broker fills/orders
+- Downloadable CSV for audit trails
+- Secondary section displaying locally saved trade logs
+- CSV uploader for the Manual/CSV broker mode
 
-### 3. Open Positions
-- Table showing all current positions
-- Displays: Symbol, Quantity, Current Price, P&L ($), P&L (%)
+### 3. Insights Tab
+- Drawdown metrics and health checks
+- Highlighted broker alerts (trading blocked, PDT status, etc.)
+- Live trading log viewer
 
-### 4. Recent Trades
-- Last 10 executed trades
-- Shows: Timestamp, Symbol, Action (buy/sell), Quantity, Price, Order ID
-
-### 5. Risk Metrics
-- Current drawdown percentage
-- Maximum drawdown reached
-- Trading status indicators
-
-### 6. Live Trading Log
-- Real-time feed of trading activity
-- Last 20 log entries displayed
+### 4. Settings Tab
+- Strategy configuration (tickers, refresh cadence, risk limits)
+- Broker-specific credential forms stored in `config/dashboard.yaml`
+- Direct editor/tester for Alpaca API keys stored in `config/secrets.yaml`
 
 ## ⚙️ Configuration
 
-The dashboard reads from:
-- `config/settings.yaml` - Trading configuration
-- `logs/equity_history_*.csv` - Equity history data
-- `results/trades_log.csv` - Trade history
-- `logs/live_trading_*.log` - Live trading logs
+Key files used by the dashboard:
+
+- `config/settings.yaml` – Core trading strategy configuration shared with the live runner
+- `config/dashboard.yaml` – Dashboard preferences, active broker, and broker credentials
+- `config/secrets.yaml` – Alpaca API keys (when using the Alpaca broker)
+- `logs/equity_history_*.csv` – Equity history data
+- `results/trades_log.csv` – Locally generated trade log (used as a fallback)
+- `logs/live_trading_*.log` – Real-time trading logs
 
 ## 🔧 Troubleshooting
 
@@ -73,8 +80,9 @@ The dashboard reads from:
 - Verify paper trading bot is actively running
 
 ### Connection errors
-- Verify Alpaca credentials in `config/secrets.yaml`
-- Check that API keys are valid and haven't expired
+- Use the **Retry connection** button in the sidebar
+- Verify broker credentials in the Settings tab
+- For Alpaca, confirm API keys in `config/secrets.yaml`
 
 ## 📱 Access
 
