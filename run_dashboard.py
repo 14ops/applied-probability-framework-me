@@ -25,7 +25,7 @@ def ensure_env_and_requirements(project_root: Path) -> str:
 
     # Install requirements if key packages are missing
     needs_install = False
-    for mod in ("streamlit", "alpaca_trade_api"):
+    for mod in ("streamlit",):
         try:
             subprocess.check_call([str(python_exe), "-c", f"import {mod}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
@@ -41,7 +41,7 @@ def ensure_env_and_requirements(project_root: Path) -> str:
 
 if __name__ == "__main__":
     root = Path(__file__).parent
-    dashboard_path = root / "stock_ai" / "dashboard_trading.py"
+    dashboard_path = root / "stock_ai" / "gui" / "trader_app.py"
 
     python_exe = ensure_env_and_requirements(root)
 

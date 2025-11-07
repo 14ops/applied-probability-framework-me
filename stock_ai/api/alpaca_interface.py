@@ -15,8 +15,10 @@ except ImportError:
     # Silently set to None - warning will be shown only when actually trying to use it
     tradeapi = None
 
+from .base_broker import BrokerInterface, OrderResult
 
-class AlpacaInterface:
+
+class AlpacaInterface(BrokerInterface):
     """
     Interface to Alpaca trading API.
     
@@ -27,6 +29,8 @@ class AlpacaInterface:
     - Account information
     """
     
+    name = "alpaca"
+
     def __init__(self, config_path: str = "config/secrets.yaml"):
         """Initialize Alpaca API client."""
         if tradeapi is None:
@@ -145,7 +149,7 @@ class AlpacaInterface:
         limit_price: Optional[float] = None,
         stop_price: Optional[float] = None,
         extended_hours: bool = False,
-    ) -> Optional[str]:
+    ) -> OrderResult:
         """
         Submit an order.
         
@@ -199,11 +203,26 @@ class AlpacaInterface:
                 raise ValueError(f"Unsupported order_type: {order_type}")
             
             logger.info(f"Submitted {side} order for {qty} shares of {symbol}")
-            return order.id
-            
+            filled_avg_price = getattr(order, "filled_avg_price", None)
+            filled_qty = getattr(order, "filled_qty", None)
+            return OrderResult(
+                broker=self.name,
+                order_id=getattr(order, "id", None),
+                status=getattr(order, "status", "submitted"),
+                submitted_at=str(getattr(order, "submitted_at", "")) if order else None,
+                filled_qty=float(filled_qty) if filled_qty is not None else None,
+                avg_fill_price=float(filled_avg_price) if filled_avg_price is not None else None,
+                raw=getattr(order, "_raw", None),
+            )
+
         except Exception as e:
             logger.error(f"Error submitting order: {e}")
-            return None
+            return OrderResult(
+                broker=self.name,
+                order_id=None,
+                status="error",
+                raw={"error": str(e)},
+            )
 
     def get_order(self, order_id: str) -> Optional[Dict]:
         """Get a single order by ID."""
@@ -275,6 +294,10 @@ class AlpacaInterface:
         except Exception as e:
             logger.error(f"Error getting orders: {e}")
             return []
+
+    def list_orders(self, status: str = 'all', limit: int = 100):
+        """Alias that conforms to :class:`BrokerInterface`."""
+        return self.get_orders(status=status, limit=limit)
     
     def get_bars(
         self,

@@ -1,7 +1,7 @@
 """
 Live Trading Runner
 
-Main loop for live paper trading on Alpaca.
+Main loop for live or paper trading across supported brokers.
 Implements risk management, order execution, and portfolio monitoring.
 """
 
@@ -26,7 +26,7 @@ except ImportError:
     # Fallback if logging setup not available
     pass
 
-from api.alpaca_interface import AlpacaInterface
+from api import BrokerFactory, BrokerInterface, BrokerNotAvailableError
 from backtests.data_loader import load_ohlcv
 from backtests.backtest_runner import print_metrics
 from strategies import ma_crossover, rsi_filter, bollinger_reversion, ensemble_vote
@@ -62,7 +62,7 @@ def get_strategy_function(strategy_name: str):
 
 class LiveTradingRunner:
     """
-    Live trading runner for paper/live trading on Alpaca.
+    Live trading runner for paper/live trading through any registered broker.
     
     Features:
     - Continuous monitoring of market conditions
@@ -75,7 +75,25 @@ class LiveTradingRunner:
     def __init__(self, config: Dict):
         """Initialize live trading runner."""
         self.config = config
-        self.alpaca = AlpacaInterface()
+
+        broker_cfg = config.get('live', {}).get('broker') or config.get('broker', 'alpaca')
+        if isinstance(broker_cfg, dict):
+            broker_name = broker_cfg.get('name', 'alpaca')
+            broker_kwargs = {k: v for k, v in broker_cfg.items() if k != 'name'}
+        else:
+            broker_name = str(broker_cfg)
+            broker_kwargs = {}
+
+        secrets_path = config.get('paths', {}).get('secrets', 'config/secrets.yaml')
+        broker_kwargs.setdefault('config_path', secrets_path)
+
+        try:
+            self.broker: BrokerInterface = BrokerFactory.create(broker_name, **broker_kwargs)
+        except BrokerNotAvailableError as exc:
+            logger.error(f"Failed to initialize broker '{broker_name}': {exc}")
+            raise
+
+        self.broker_name = broker_name
         
         # Load strategy
         strategy_config = config.get('strategy', {})
@@ -109,12 +127,12 @@ class LiveTradingRunner:
     
     def is_market_open(self) -> bool:
         """Check if market is currently open."""
-        clock = self.alpaca.get_clock()
+        clock = self.broker.get_clock() or {}
         return clock.get('is_open', False)
     
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current price for a symbol (delegates to AlpacaInterface)."""
-        return self.alpaca.get_current_price(symbol)
+        """Get current price for a symbol via the configured broker."""
+        return self.broker.get_current_price(symbol)
     
     def calculate_position_size(self, symbol: str, signal: int) -> int:
         """
@@ -131,7 +149,7 @@ class LiveTradingRunner:
             return 0
         
         try:
-            account = self.alpaca.get_account()
+            account = self.broker.get_account()
             buying_power = account.get('buying_power', 0)
             
             if buying_power <= 0:
@@ -203,7 +221,7 @@ class LiveTradingRunner:
             latest_signal = df['signal'].iloc[-1]
             
             # Get current position
-            position = self.alpaca.get_position(symbol)
+            position = self.broker.get_position(symbol)
             has_position = position is not None
             
             # Decide on action
@@ -241,21 +259,23 @@ class LiveTradingRunner:
                 logger.error(f"Could not get price for {symbol}, aborting trade")
                 return None
             
+            result = None
             if action == 'buy':
-                order_id = self.alpaca.submit_order(symbol, qty, side='buy', order_type='market')
+                result = self.broker.submit_order(symbol, qty, side='buy', order_type='market')
             elif action == 'sell':
                 # For sell, if we have position, sell all
-                position = self.alpaca.get_position(symbol)
+                position = self.broker.get_position(symbol)
                 if position:
                     qty = abs(position['qty'])  # Ensure positive qty for sell
-                order_id = self.alpaca.submit_order(symbol, qty, side='sell', order_type='market')
+                result = self.broker.submit_order(symbol, qty, side='sell', order_type='market')
             else:
                 logger.warning(f"Unknown action: {action}")
                 return None
-            
+
+            order_id = getattr(result, 'order_id', None)
             if order_id:
-                logger.info(f"Executed {action} order for {qty} shares of {symbol} @ ${price:.2f}")
-                
+                logger.info(f"Executed {action} order for {qty} shares of {symbol} @ ${price:.2f} via {self.broker_name}")
+
                 # Log trade with full details
                 trade_entry = {
                     'timestamp': datetime.now(),
@@ -263,13 +283,14 @@ class LiveTradingRunner:
                     'action': action,
                     'qty': qty,
                     'price': price,
-                    'order_id': order_id
+                    'order_id': order_id,
+                    'broker': self.broker_name,
                 }
                 self.trade_log.append(trade_entry)
-                
+
                 # Update trade statistics
                 self.update_trade_stats(symbol, action, price, qty)
-            
+
             return order_id
             
         except Exception as e:
@@ -279,7 +300,7 @@ class LiveTradingRunner:
     def update_equity(self):
         """Update equity tracking."""
         try:
-            account = self.alpaca.get_account()
+            account = self.broker.get_account()
             equity = account.get('portfolio_value', 0)
             
             # Initialize or update max equity
@@ -340,7 +361,7 @@ class LiveTradingRunner:
         
         # Check drawdown
         if self.max_equity_seen is not None:
-            account = self.alpaca.get_account()
+            account = self.broker.get_account()
             current_equity = account.get('portfolio_value', 0)
             
             if current_equity < self.max_equity_seen:
@@ -496,7 +517,7 @@ class LiveTradingRunner:
                     self.last_check = datetime.now()
                 
                 # Print status summary
-                account = self.alpaca.get_account()
+                account = self.broker.get_account()
                 equity = account.get('portfolio_value', 0)
                 drawdown_info = ""
                 if self.max_equity_seen:
@@ -524,14 +545,14 @@ class LiveTradingRunner:
             logger.info("Trading session ended")
             
             # Print final summary
-            account = self.alpaca.get_account()
-            print_portfolio_summary(self.alpaca)
+            account = self.broker.get_account()
+            print_portfolio_summary(self.broker)
 
 
-def print_portfolio_summary(alpaca: AlpacaInterface):
+def print_portfolio_summary(broker: BrokerInterface):
     """Print current portfolio summary."""
-    account = alpaca.get_account()
-    positions = alpaca.get_positions()
+    account = broker.get_account()
+    positions = broker.get_positions()
     
     print("\n" + "="*80)
     print("PORTFOLIO SUMMARY")
@@ -543,8 +564,14 @@ def print_portfolio_summary(alpaca: AlpacaInterface):
     print(f"\nOpen Positions: {len(positions)}")
     
     for pos in positions:
-        print(f"  {pos['symbol']}: {pos['qty']} shares @ ${pos['current_price']:.2f} "
-              f"(PL: ${pos['unrealized_pl']:.2f}, {pos['unrealized_plpc']*100:.2f}%)")
+        current_price = pos.get('current_price') or broker.get_current_price(pos['symbol']) or 0
+        unrealized_pl = pos.get('unrealized_pl', 0)
+        unrealized_pct = pos.get('unrealized_plpc', 0)
+        pct_display = f"{unrealized_pct*100:.2f}%" if isinstance(unrealized_pct, (int, float)) else unrealized_pct
+        print(
+            f"  {pos['symbol']}: {pos['qty']} shares @ ${current_price:.2f} "
+            f"(PL: ${unrealized_pl:.2f}, {pct_display})"
+        )
     
     print("="*80 + "\n")
 
@@ -562,7 +589,7 @@ if __name__ == "__main__":
     runner = LiveTradingRunner(config)
     
     # Print initial portfolio
-    print_portfolio_summary(runner.alpaca)
+    print_portfolio_summary(runner.broker)
     
     # Ask for confirmation (or check for auto-confirm)
     auto_confirm = os.getenv('AUTO_CONFIRM', 'false').lower() == 'true' or '--auto-confirm' in sys.argv
@@ -570,8 +597,8 @@ if __name__ == "__main__":
     if not auto_confirm:
         print("\n⚠️  WARNING: This will execute live/paper trades!")
         print("Make sure you have:")
-        print("  1. Configured config/secrets.yaml with your Alpaca credentials")
-        print("  2. Verified you're using paper trading URL")
+        print(f"  1. Configured config/secrets.yaml with your {runner.broker_name.title()} credentials")
+        print("  2. Verified you're targeting the correct paper/live environment")
         print("  3. Tested your strategy thoroughly in backtests")
         
         response = input("\nProceed with live trading? (yes/no): ")
