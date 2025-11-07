@@ -13,9 +13,15 @@ A local-first research environment for testing, training, and deploying AI-drive
 
 ## 🎯 Overview
 
-This project transforms probabilistic-strategy research into a **local stock-market automation lab**.  
+This project transforms probabilistic-strategy research into a **local stock-market automation lab**.
 
 It began as a study of expected-value systems and now focuses on **AI-assisted portfolio and trading-strategy optimization**.
+
+## 📁 Documentation Map
+
+- 📚 **Guides & Walkthroughs** – see [`docs/guides/`](docs/guides/README.md) for setup guides, migration notes, training playbooks, and dashboard instructions that used to live at the project root.
+- 📈 **Status & Planning Reports** – historical milestones and progress reports are now organized under [`docs/status/`](docs/status/README.md).
+- 🛠️ **Operational Checklists** – paper-trading readiness checklists are available in [`docs/operations/`](docs/operations/README.md).
 
 The framework provides:
 

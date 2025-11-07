@@ -25,6 +25,8 @@
 
 ---
 
+> **Documentation tip:** Operational guides now live in [`guides/`](guides/README.md), milestone reports in [`status/`](status/README.md), and runbooks in [`operations/`](operations/README.md).
+
 ## Executive Summary
 
 This project represents a sophisticated fusion of theoretical probability analysis and practical software engineering, designed to explore and optimize betting strategies in high-Return-to-Player (RTP) games. Like a master strategist commanding multiple specialized units in a complex battle scenario, our framework orchestrates four distinct algorithmic approaches, each inspired by iconic anime characters and their unique decision-making philosophies.
