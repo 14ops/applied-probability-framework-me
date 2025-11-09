@@ -1,0 +1,1 @@
+import pandas as pd\n\nclass EquitiesEnv:\n    def __init__(self, data, starting_cash=100000):\n        self.data = data\n        self.cash = starting_cash\n        self.positions = {}\n\n    def step(self, action):\n        # Placeholder for trading logic\n        return None, 0.0, False, {}
