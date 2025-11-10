@@ -26,3 +26,12 @@ alpaca-trade-api>=3.0.0
 streamlit>=1.28.0
 plotly>=5.17.0
 
+# RL / Deep Learning
+torch>=2.0.0
+
+# News/RSS
+feedparser>=6.0.10
+
+# Deep RL (PyTorch)
+torch>=2.2.0
+
