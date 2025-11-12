@@ -1,0 +1,15 @@
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:70:    https://school.stockcharts.com/doku.php?id=technical_indicators:bollinger_bands
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:502:    https://en.wikipedia.org/wiki/Bollinger_Bands
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:522:    https://en.wikipedia.org/wiki/Bollinger_Bands
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:545:    https://en.wikipedia.org/wiki/Bollinger_Bands
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:607:    https://en.wikipedia.org/wiki/Bollinger_Bands
+C:\Users\Seth\applied-probability-framework-me-main\.venv\Lib\site-packages\ta\volatility.py:629:    https://en.wikipedia.org/wiki/Bollinger_Bands
+C:\Users\Seth\applied-probability-framework-me-main\src\python\strategies\aoi.py:5:from ..indicators.ta import bollinger_bands
+C:\Users\Seth\applied-probability-framework-me-main\src\python\strategies\aoi.py:26:        bb_df = bollinger_bands(historical_data['close'], self.bb_period, self.bb_std_dev)
+C:\Users\Seth\applied-probability-framework-me-main\src\python\strategies\lelouch.py:5:from ..indicators.ta import rsi, bollinger_bands
+C:\Users\Seth\applied-probability-framework-me-main\src\python\strategies\lelouch.py:34:        bb_df = bollinger_bands(historical_data['close'], self.bb_period, self.bb_std_dev)
+C:\Users\Seth\applied-probability-framework-me-main\stock_ai\optimizer.py:202:def optimize_bollinger_bands(
+C:\Users\Seth\applied-probability-framework-me-main\stock_ai\optimizer.py:371:        results_df = optimize_bollinger_bands(symbol, window_range=window_range, std_range=std_range)
+C:\Users\Seth\applied-probability-framework-me-main\stock_ai\strategies\bollinger_reversion.py:14:def calculate_bollinger_bands(
+C:\Users\Seth\applied-probability-framework-me-main\stock_ai\strategies\bollinger_reversion.py:73:    upper, middle, lower = calculate_bollinger_bands(
+C:\Users\Seth\applied-probability-framework-me-main\stock_ai\strategies\bollinger_reversion.py:130:    upper, middle, lower = calculate_bollinger_bands(
